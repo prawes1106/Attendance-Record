@@ -9,12 +9,11 @@ import { AttendancePage } from './components/AttendancePage';
 import { UsersPage } from './components/UsersPage';
 import { SettingsPage } from './components/SettingsPage';
 import { PrintReportsPage } from './components/PrintReportsPage';
-import { PhpSourceViewer } from './components/PhpSourceViewer';
 import { storageService } from './services/storage';
 import { UserPersonnel, AttendanceRecord, SystemSettings } from './types';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<'attendance' | 'users' | 'settings' | 'print' | 'php-code'>('attendance');
+  const [currentTab, setCurrentTab] = useState<'attendance' | 'users' | 'settings' | 'print'>('attendance');
   const [settings, setSettings] = useState<SystemSettings>(storageService.getSettings());
   const [users, setUsers] = useState<UserPersonnel[]>(storageService.getUsers());
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceRecord[]>(storageService.getAttendanceLogs());
@@ -29,7 +28,7 @@ export default function App() {
     refreshData();
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
-    if (tabParam === 'print' || tabParam === 'users' || tabParam === 'settings' || tabParam === 'attendance' || tabParam === 'php-code') {
+    if (tabParam === 'print' || tabParam === 'users' || tabParam === 'settings' || tabParam === 'attendance') {
       setCurrentTab(tabParam as any);
     }
     if (params.get('autoprint') === 'true') {
@@ -86,11 +85,8 @@ export default function App() {
             users={users}
             attendanceLogs={attendanceLogs}
             settings={settings}
+            onRefreshData={refreshData}
           />
-        )}
-
-        {currentTab === 'php-code' && (
-          <PhpSourceViewer />
         )}
       </main>
 

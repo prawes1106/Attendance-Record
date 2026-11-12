@@ -212,22 +212,62 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
 
     if (result.isConfirmed) {
       const newName = (result.value || '').trim() || 'วันหยุดราชการ';
-      storageService.setPublicHoliday(dateStr, newName, users.map(u => u.id));
+      storageService.setPublicHoliday(dateStr, newName);
       onRefreshData();
       alertHelper.toastSuccess(`อัปเดตชื่อวันหยุดเป็น "${newName}" เรียบร้อย`);
     } else if (result.isDenied) {
-      storageService.removePublicHoliday(dateStr);
+      storageService.removePublicHoliday(dateStr, true);
       onRefreshData();
-      alertHelper.toastSuccess(`ยกเลิกวันหยุดวันที่ ${day} กลับเป็นวันทำงานปกติเรียบร้อย`);
+      alertHelper.toastSuccess(`ยกเลิกวันหยุดวันที่ ${day} กลับเป็นวันทำการปกติ (/) เรียบร้อย`);
     }
   };
 
   const handleOpenSetHolidayModal = async () => {
+    const monthPrefix = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}`;
+    const existingHolidaysMap = new Map<string, string>();
+    attendanceLogs
+      .filter(l => l.date.startsWith(monthPrefix) && l.symbol === 'ห')
+      .forEach(l => {
+        if (!existingHolidaysMap.has(l.date)) {
+          existingHolidaysMap.set(l.date, l.note?.trim() || 'วันหยุดราชการ');
+        }
+      });
+
     const dayOptions = Array.from({ length: daysInMonth }, (_, i) => i + 1)
       .filter(day => {
         const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         return !isWeekend(dateStr);
       });
+
+    const existingHolidaysList = Array.from(existingHolidaysMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
+    const existingHtml = existingHolidaysList.length > 0
+      ? `
+        <div class="mt-3 pt-3 border-t border-amber-200">
+          <p class="font-bold text-amber-950 text-xs mb-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-list-check text-amber-600"></i>
+            <span>วันหยุดที่กำหนดไว้แล้วในเดือนนี้ (${existingHolidaysList.length} วัน):</span>
+          </p>
+          <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+            ${existingHolidaysList.map(([dStr, hName]) => {
+              const dNum = parseInt(dStr.split('-')[2], 10);
+              return `
+                <div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 text-xs">
+                  <span class="font-medium text-slate-800">
+                    <span class="font-bold text-red-600 mr-1.5">วันที่ ${dNum}:</span> ${hName}
+                  </span>
+                  <button type="button" class="swal-btn-delete-holiday text-red-600 hover:text-red-800 text-[11px] font-bold px-2 py-0.5 rounded bg-red-50 hover:bg-red-100 transition" data-date="${dStr}" data-day="${dNum}">
+                    <i class="fa-solid fa-trash-can mr-1"></i> ลบ
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">* คลิกปุ่ม "ลบ" เพื่อยกเลิกวันหยุดนั้นกลับเป็นวันทำงานปกติได้ทันที</p>
+        </div>
+      `
+      : '';
 
     const { value: formValues } = await Swal.fire({
       title: 'กำหนดวันหยุดราชการ',
@@ -235,12 +275,17 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
         <div class="text-left text-xs text-slate-600 mb-3 bg-amber-50/60 p-3 rounded-xl border border-amber-200">
           <p class="font-bold text-amber-950 mb-1">เลือกวันที่และระบุชื่อวันหยุดในเดือน ${THAI_MONTHS_FULL[selectedMonth]} พ.ศ. ${selectedYearBE}:</p>
           <p class="text-slate-600">เมื่อกำหนดแล้ว ตารางจะรวมช่องทุกแถวบุคลากรเป็นคอลัมน์สีส้มอ่อนพร้อมชื่อวันหยุดแนวตั้งอัตโนมัติ</p>
+          ${existingHtml}
         </div>
         <div class="text-left space-y-3">
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">เลือกวันที่ (เฉพาะวันจันทร์ - ศุกร์):</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">เลือกวันที่ต้องการเพิ่มเป็นวันหยุด (เฉพาะวันจันทร์ - ศุกร์):</label>
             <select id="swal-holiday-day" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-medium focus:ring-2 focus:ring-blue-500">
-              ${dayOptions.map(d => `<option value="${d}">วันที่ ${d} ${THAI_MONTHS_FULL[selectedMonth]} (วัน${formatThaiDate(`${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`).split(' ')[0]})</option>`).join('')}
+              ${dayOptions.map(d => {
+                const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const isExisting = existingHolidaysMap.has(dateStr);
+                return `<option value="${d}">วันที่ ${d} ${THAI_MONTHS_FULL[selectedMonth]} (วัน${formatThaiDate(dateStr).split(' ')[0]})${isExisting ? ' [วันหยุดปัจจุบัน]' : ''}</option>`;
+              }).join('')}
             </select>
           </div>
           <div>
@@ -249,10 +294,27 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
           </div>
         </div>
       `,
+      didOpen: (popup) => {
+        const deleteButtons = popup.querySelectorAll('.swal-btn-delete-holiday');
+        deleteButtons.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const target = btn as HTMLElement;
+            const targetDate = target.getAttribute('data-date');
+            const targetDay = target.getAttribute('data-day');
+            if (targetDate) {
+              storageService.removePublicHoliday(targetDate, true);
+              onRefreshData();
+              Swal.close();
+              alertHelper.toastSuccess(`ยกเลิกวันหยุดวันที่ ${targetDay} เรียบร้อยแล้ว`);
+            }
+          });
+        });
+      },
       focusConfirm: false,
       showCancelButton: true,
       confirmButtonText: '<i class="fa-solid fa-plus mr-1"></i> บันทึกวันหยุด',
-      cancelButtonText: 'ยกเลิก',
+      cancelButtonText: 'ปิด',
       confirmButtonColor: '#d97706',
       cancelButtonColor: '#64748b',
       customClass: {
@@ -272,7 +334,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
     if (formValues) {
       const { day, holidayName } = formValues;
       const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      storageService.setPublicHoliday(dateStr, holidayName, users.map(u => u.id));
+      storageService.setPublicHoliday(dateStr, holidayName);
       onRefreshData();
       alertHelper.toastSuccess(`กำหนดวันหยุด "${holidayName}" วันที่ ${day} ${THAI_MONTHS_FULL[selectedMonth]} สำเร็จ`);
     }

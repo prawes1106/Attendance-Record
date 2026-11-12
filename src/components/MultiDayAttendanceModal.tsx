@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserPersonnel, AttendanceSymbol, AttendanceRecord } from '../types';
 import { getDaysInMonth, isWeekend } from '../utils/thaiDate';
 import { alertHelper, storageService } from '../services/storage';
+import { getHolidaysForMonth } from '../data/thaiHolidays';
 
 interface MultiDayAttendanceModalProps {
   user: UserPersonnel;
@@ -27,11 +28,41 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
   const yearCE = selectedYearBE - 543;
   const daysInMonth = getDaysInMonth(yearCE, selectedMonth);
 
+  // รวมวันหยุดประจำปี (จากฐานข้อมูลวันหยุดทางการ) และวันหยุดราชการที่มีการบันทึกไว้ในระบบ
+  const annualHolidays = getHolidaysForMonth(yearCE, selectedMonth);
+  const holidayMap = new Map<number, { name: string; isRecorded: boolean; isWeekend: boolean }>();
+
+  // 1. วันหยุดราชการตามประกาศทางการ
+  annualHolidays.forEach(h => {
+    const dStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`;
+    holidayMap.set(h.day, {
+      name: h.name,
+      isRecorded: false,
+      isWeekend: isWeekend(dStr)
+    });
+  });
+
+  // 2. วันหยุดที่มีการบันทึกสัญลักษณ์ 'ห' ไว้ใน existingLogs
+  const monthPrefix = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}`;
+  existingLogs.forEach(rec => {
+    if (rec.symbol === 'ห' && rec.date.startsWith(monthPrefix)) {
+      const dayNum = parseInt(rec.date.split('-')[2], 10);
+      const dStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      holidayMap.set(dayNum, {
+        name: rec.note?.trim() || holidayMap.get(dayNum)?.name || 'วันหยุดราชการ',
+        isRecorded: true,
+        isWeekend: isWeekend(dStr)
+      });
+    }
+  });
+
   // Multi-day selection state (เสาร์-อาทิตย์ ไม่ต้องลงเวลา)
   const initialDateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(initialDay).padStart(2, '0')}`;
   const [selectedDays, setSelectedDays] = useState<number[]>(isWeekend(initialDateStr) ? [] : [initialDay]);
   const [selectedSymbol, setSelectedSymbol] = useState<AttendanceSymbol | null>(null);
-  const [holidayNote, setHolidayNote] = useState<string>('วันหยุดราชการ');
+  const [holidayNote, setHolidayNote] = useState<string>(
+    holidayMap.get(initialDay)?.name || 'วันหยุดราชการ'
+  );
   const [applyToAll, setApplyToAll] = useState<boolean>(true);
 
   // Status definitions matching government regulations + วันหยุด (ห)
@@ -53,11 +84,13 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
     if (isWeekend(dateStr)) return; // เสาร์-อาทิตย์ ไม่ต้องลงเวลา
 
     setSelectedDays(prev => {
-      if (prev.includes(day)) {
-        return prev.filter(d => d !== day);
-      } else {
-        return [...prev, day].sort((a, b) => a - b);
+      const isAlready = prev.includes(day);
+      const nextDays = isAlready ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b);
+      if (!isAlready && nextDays.length === 1) {
+        const h = holidayMap.get(day);
+        if (h) setHolidayNote(h.name);
       }
+      return nextDays;
     });
   };
 
@@ -190,6 +223,21 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
               const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const weekend = isWeekend(dateStr);
               const isSelected = selectedDays.includes(day);
+              const holidayInfo = !weekend ? holidayMap.get(day) : undefined;
+              const isHoliday = Boolean(holidayInfo);
+
+              let buttonClass = 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer';
+
+              if (weekend) {
+                buttonClass = 'bg-[#fee8e8] text-rose-300 border-rose-100 cursor-not-allowed opacity-60 select-none';
+              } else if (isSelected) {
+                buttonClass = isHoliday
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300 scale-102 cursor-pointer'
+                  : 'bg-[#0b5ed7] text-white border-[#0b5ed7] shadow-sm ring-2 ring-blue-300 scale-102 cursor-pointer';
+              } else if (isHoliday) {
+                // วันหยุดราชการประจำปี: แสดงสีส้มอ่อนพร้อมกรอบและป้ายวันหยุด
+                buttonClass = 'bg-[#fff5f0] text-amber-950 border-amber-300 hover:bg-amber-100 hover:border-amber-400 cursor-pointer shadow-xs';
+              }
 
               return (
                 <button
@@ -197,25 +245,110 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
                   type="button"
                   disabled={weekend}
                   onClick={() => handleToggleDay(day)}
-                  title={weekend ? 'วันหยุดเสาร์-อาทิตย์ (ไม่ต้องลงเวลา)' : `วันที่ ${day}`}
-                  className={`h-10 sm:h-11 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all border ${
+                  title={
                     weekend
-                      ? 'bg-[#fee8e8] text-rose-300 border-rose-100 cursor-not-allowed opacity-60 select-none'
-                      : isSelected
-                      ? 'bg-[#0b5ed7] text-white border-[#0b5ed7] shadow-sm ring-2 ring-blue-300 scale-102 cursor-pointer'
-                      : 'bg-white text-slate-800 border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
-                  }`}
+                      ? 'วันหยุดเสาร์-อาทิตย์ (ไม่ต้องลงเวลา)'
+                      : isHoliday
+                      ? `วันที่ ${day}: วันหยุดราชการ (${holidayInfo?.name})`
+                      : `วันที่ ${day}`
+                  }
+                  className={`h-11 sm:h-12 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all border relative ${buttonClass}`}
                 >
-                  <span className="text-sm">{day}</span>
-                  {weekend && <span className="text-[9px] text-rose-400 font-normal">หยุด</span>}
+                  <span className={`text-sm ${isHoliday && !isSelected && !weekend ? 'font-black text-amber-950' : ''}`}>
+                    {day}
+                  </span>
+                  {weekend ? (
+                    <span className="text-[9px] text-rose-400 font-normal">หยุด</span>
+                  ) : isHoliday ? (
+                    <span
+                      className={`text-[8px] font-bold truncate max-w-[44px] leading-tight px-0.5 ${
+                        isSelected ? 'text-amber-100' : 'text-red-600'
+                      }`}
+                    >
+                      วันหยุด
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
           </div>
 
+          {/* กล่องแสดงรายการวันหยุดราชการประจำเดือนนี้ */}
+          {holidayMap.size > 0 && (
+            <div className="mt-3 p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl text-left text-xs shadow-2xs">
+              <div className="font-bold text-amber-950 flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <i className="fa-solid fa-umbrella-beach text-amber-600"></i>
+                  <span>วันหยุดราชการ / ประจำปีในเดือนนี้ ({holidayMap.size} วัน):</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const workingHolidayDays = Array.from(holidayMap.keys()).filter(d => {
+                      const dStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                      return !isWeekend(dStr);
+                    });
+                    setSelectedDays(workingHolidayDays);
+                    setSelectedSymbol('ห');
+                    if (workingHolidayDays.length === 1) {
+                      const h = holidayMap.get(workingHolidayDays[0]);
+                      if (h) setHolidayNote(h.name);
+                    }
+                  }}
+                  className="text-[10px] text-amber-800 hover:text-amber-950 hover:underline font-bold cursor-pointer"
+                  title="คลิกเพื่อเลือกวันหยุดราชการทั้งหมดในเดือนนี้พร้อมระบุสถานะวันหยุด (ห)"
+                >
+                  เลือกวันหยุดทั้งหมด
+                </button>
+              </div>
+              <div className="space-y-1 max-h-24 overflow-y-auto text-[11px] text-slate-700 pr-1">
+                {Array.from(holidayMap.entries())
+                  .sort((a, b) => a[0] - b[0])
+                  .map(([d, info]) => {
+                    const isSelected = selectedDays.includes(d);
+                    return (
+                      <div
+                        key={d}
+                        onClick={() => !info.isWeekend && handleToggleDay(d)}
+                        className={`flex items-center justify-between gap-2 p-1 rounded-md transition ${
+                          info.isWeekend
+                            ? 'opacity-60 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-amber-200/60 font-semibold cursor-pointer'
+                            : 'hover:bg-amber-100/60 cursor-pointer'
+                        }`}
+                        title={info.isWeekend ? 'ตรงกับวันหยุดเสาร์-อาทิตย์' : 'คลิกเพื่อเลือก/ยกเลิกวันที่นี้'}
+                      >
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              isSelected ? 'bg-blue-600' : 'bg-red-500'
+                            }`}
+                          ></span>
+                          <span>
+                            วันที่ <b>{d}</b>: {info.name}
+                          </span>
+                        </span>
+                        {info.isWeekend ? (
+                          <span className="text-[9px] text-slate-400 shrink-0">(เสาร์-อาทิตย์)</span>
+                        ) : isSelected ? (
+                          <span className="text-[9px] text-blue-700 font-bold shrink-0">✓ เลือกแล้ว</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
           {/* Selection indicator label */}
-          <div className="mt-2.5 text-xs font-bold text-blue-700">
-            เลือกแล้ว {selectedDays.length} วันทำการ
+          <div className="mt-2.5 text-xs font-bold text-blue-700 flex items-center justify-between">
+            <span>เลือกแล้ว {selectedDays.length} วันทำการ</span>
+            {selectedDays.some(d => holidayMap.has(d)) && (
+              <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-semibold">
+                (มีวันหยุดราชการ {selectedDays.filter(d => holidayMap.has(d)).length} วัน)
+              </span>
+            )}
           </div>
         </div>
 

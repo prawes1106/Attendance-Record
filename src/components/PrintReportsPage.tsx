@@ -9,18 +9,21 @@ import {
   getFiscalYearRange,
   isWeekend
 } from '../utils/thaiDate';
-import { storageService } from '../services/storage';
+import { storageService, alertHelper } from '../services/storage';
+import { getHolidaysForYear, getHolidaysForMonth } from '../data/thaiHolidays';
 
 interface PrintReportsPageProps {
   users: UserPersonnel[];
   attendanceLogs: AttendanceRecord[];
   settings: SystemSettings;
+  onRefreshData?: () => void;
 }
 
 export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
   users,
   attendanceLogs,
-  settings
+  settings,
+  onRefreshData
 }) => {
   const queryParams = new URLSearchParams(window.location.search);
   const initialReportType = (queryParams.get('reportType') as 'monthly' | 'leave-summary' | 'individual') || 'monthly';
@@ -84,6 +87,233 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
     logsMap.set(`${log.userId}_${log.date}`, log.symbol);
   });
 
+  // รายการวันหยุดราชการประจำเดือน เพื่อแสดงผลและสั่งพิมพ์ลงในเอกสาร
+  const monthPrefix = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}`;
+  const monthlyHolidaysMap = new Map<string, string>();
+  attendanceLogs
+    .filter(l => l.date.startsWith(monthPrefix) && l.symbol === 'ห')
+    .forEach(l => {
+      if (!monthlyHolidaysMap.has(l.date)) {
+        monthlyHolidaysMap.set(l.date, l.note?.trim() || 'วันหยุดราชการ');
+      }
+    });
+
+  const monthlyHolidaysList = Array.from(monthlyHolidaysMap.entries())
+    .map(([date, name]) => ({
+      date,
+      day: parseInt(date.split('-')[2], 10),
+      name
+    }))
+    .sort((a, b) => a.day - b.day);
+
+  const handleHolidayColumnClick = async (day: number, dateStr: string, currentHolidayName: string) => {
+    const result = await Swal.fire({
+      title: `จัดการวันหยุดราชการ`,
+      html: `
+        <div class="text-left text-xs mb-3 text-slate-600 bg-amber-50/80 p-3 rounded-xl border border-amber-200">
+          <div class="font-bold text-amber-900 text-sm mb-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-umbrella-beach text-amber-600"></i>
+            <span>วันที่ ${day} ${THAI_MONTHS_FULL[selectedMonth]} พ.ศ. ${selectedYearBE}</span>
+          </div>
+          <p class="text-slate-600 mt-1">แก้ไขชื่อวันหยุด หรือยกเลิกเพื่อเปลี่ยนกลับเป็นวันทำการปกติ</p>
+        </div>
+        <div class="text-left mb-1 text-xs font-bold text-slate-700">ชื่อวันหยุดราชการ:</div>
+      `,
+      input: 'text',
+      inputValue: currentHolidayName,
+      inputPlaceholder: 'เช่น วันเข้าพรรษา, วันปิยมหาราช, วันสงกรานต์...',
+      showCancelButton: true,
+      showDenyButton: true,
+      confirmButtonText: '<i class="fa-solid fa-check mr-1"></i> บันทึกชื่อวันหยุด',
+      denyButtonText: '<i class="fa-solid fa-trash-can mr-1"></i> ยกเลิกวันหยุดนี้',
+      cancelButtonText: 'ปิด',
+      confirmButtonColor: '#0b5ed7',
+      denyButtonColor: '#dc2626',
+      cancelButtonColor: '#64748b',
+      customClass: {
+        popup: 'rounded-2xl font-sans'
+      }
+    });
+
+    if (result.isConfirmed) {
+      const newName = (result.value || '').trim() || 'วันหยุดราชการ';
+      storageService.setPublicHoliday(dateStr, newName);
+      if (onRefreshData) onRefreshData();
+      alertHelper.toastSuccess(`อัปเดตชื่อวันหยุดเป็น "${newName}" เรียบร้อย`);
+    } else if (result.isDenied) {
+      storageService.removePublicHoliday(dateStr, true);
+      if (onRefreshData) onRefreshData();
+      alertHelper.toastSuccess(`ยกเลิกวันหยุดวันที่ ${day} กลับเป็นวันทำการปกติ (/) เรียบร้อย`);
+    }
+  };
+
+  const handleSyncAnnualHolidays = async () => {
+    const holidaysInYear = getHolidaysForYear(yearCE);
+    const holidaysInMonth = getHolidaysForMonth(yearCE, selectedMonth);
+
+    const { value: syncChoice } = await Swal.fire({
+      title: 'ดึงวันหยุดราชการประจำปีอัตโนมัติ',
+      html: `
+        <div class="text-left text-xs text-slate-600 mb-3 bg-amber-50/80 p-3.5 rounded-xl border border-amber-200">
+          <p class="font-bold text-amber-950 text-sm mb-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-cloud-arrow-down text-amber-600"></i>
+            <span>ระบบปฏิทินวันหยุดราชการและวันหยุดนักขัตฤกษ์ของไทย</span>
+          </p>
+          <p>ระบบจะดึงวันหยุดราชการอย่างเป็นทางการของปี <b>พ.ศ. ${selectedYearBE} (ค.ศ. ${yearCE})</b> บันทึกเป็นสัญลักษณ์ <b>"ห"</b> พร้อมชื่อวันหยุดลงในบัญชีงบเดือนและแสดงในรายงานสั่งพิมพ์ให้อัตโนมัติ</p>
+        </div>
+        <div class="text-left space-y-2 text-xs">
+          <p class="font-bold text-slate-800">เลือกช่วงเวลาที่ต้องการซิงก์:</p>
+          <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input type="radio" name="sync-scope" value="month" checked class="text-amber-600 focus:ring-amber-500" />
+            <div>
+              <div class="font-bold text-slate-800">เฉพาะเดือน${THAI_MONTHS_FULL[selectedMonth]} พ.ศ. ${selectedYearBE}</div>
+              <div class="text-[11px] text-slate-500">พบวันหยุดราชการ ${holidaysInMonth.length} วัน (${holidaysInMonth.map(h => h.name).join(', ') || 'ไม่มีวันหยุดในเดือนนี้'})</div>
+            </div>
+          </label>
+          <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+            <input type="radio" name="sync-scope" value="year" class="text-amber-600 focus:ring-amber-500" />
+            <div>
+              <div class="font-bold text-slate-800">ทั้งปีงบประมาณ / ปฏิทิน พ.ศ. ${selectedYearBE}</div>
+              <div class="text-[11px] text-slate-500">พบวันหยุดราชการและวันหยุดชดเชยรวมทั้งปี ${holidaysInYear.length} วัน</div>
+            </div>
+          </label>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-cloud-arrow-down mr-1"></i> ยืนยันดึงวันหยุด',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#d97706',
+      cancelButtonColor: '#64748b',
+      customClass: {
+        popup: 'rounded-2xl font-sans'
+      },
+      preConfirm: () => {
+        const checked = document.querySelector('input[name="sync-scope"]:checked') as HTMLInputElement;
+        return checked ? checked.value : 'month';
+      }
+    });
+
+    if (syncChoice) {
+      if (syncChoice === 'month') {
+        const count = storageService.syncAnnualPublicHolidays(yearCE, users.map(u => u.id), selectedMonth);
+        if (onRefreshData) onRefreshData();
+        alertHelper.toastSuccess(`ดึงวันหยุดราชการเดือน${THAI_MONTHS_FULL[selectedMonth]} ${count} วัน เรียบร้อยแล้ว`);
+      } else {
+        const count = storageService.syncAnnualPublicHolidays(yearCE, users.map(u => u.id));
+        if (onRefreshData) onRefreshData();
+        alertHelper.toastSuccess(`ดึงวันหยุดราชการทั้งปี พ.ศ. ${selectedYearBE} รวม ${count} วัน เรียบร้อยแล้ว`);
+      }
+    }
+  };
+
+  const handleOpenSetHolidayModal = async () => {
+    const dayOptions = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+      .filter(day => {
+        const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return !isWeekend(dateStr);
+      });
+
+    const existingHolidaysList = Array.from(monthlyHolidaysMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
+    const existingHtml = existingHolidaysList.length > 0
+      ? `
+        <div class="mt-3 pt-3 border-t border-amber-200">
+          <p class="font-bold text-amber-950 text-xs mb-1.5 flex items-center gap-1">
+            <i class="fa-solid fa-list-check text-amber-600"></i>
+            <span>วันหยุดที่กำหนดไว้แล้วในเดือนนี้ (${existingHolidaysList.length} วัน):</span>
+          </p>
+          <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+            ${existingHolidaysList.map(([dStr, hName]) => {
+              const dNum = parseInt(dStr.split('-')[2], 10);
+              return `
+                <div class="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 text-xs">
+                  <span class="font-medium text-slate-800">
+                    <span class="font-bold text-red-600 mr-1.5">วันที่ ${dNum}:</span> ${hName}
+                  </span>
+                  <button type="button" class="swal-btn-delete-holiday text-red-600 hover:text-red-800 text-[11px] font-bold px-2 py-0.5 rounded bg-red-50 hover:bg-red-100 transition" data-date="${dStr}" data-day="${dNum}">
+                    <i class="fa-solid fa-trash-can mr-1"></i> ลบ
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">* คลิกปุ่ม "ลบ" เพื่อยกเลิกวันหยุดนั้นกลับเป็นวันทำงานปกติได้ทันที</p>
+        </div>
+      `
+      : '';
+
+    const { value: formValues } = await Swal.fire({
+      title: 'กำหนดวันหยุดราชการ',
+      html: `
+        <div class="text-left text-xs text-slate-600 mb-3 bg-amber-50/60 p-3 rounded-xl border border-amber-200">
+          <p class="font-bold text-amber-950 mb-1">เลือกวันที่และระบุชื่อวันหยุดในเดือน ${THAI_MONTHS_FULL[selectedMonth]} พ.ศ. ${selectedYearBE}:</p>
+          <p class="text-slate-600">วันหยุดนี้จะถูกพิมพ์ลงในบัญชีงบเดือนและระบุในกล่องสรุปวันหยุดประจำเดือนอัตโนมัติ</p>
+          ${existingHtml}
+        </div>
+        <div class="text-left space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">เลือกวันที่ต้องการเพิ่มเป็นวันหยุด (เฉพาะวันจันทร์ - ศุกร์):</label>
+            <select id="swal-holiday-day" class="w-full border border-slate-300 rounded-lg p-2 text-xs font-medium focus:ring-2 focus:ring-blue-500">
+              ${dayOptions.map(d => {
+                const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const isExisting = monthlyHolidaysMap.has(dateStr);
+                return `<option value="${d}">วันที่ ${d} ${THAI_MONTHS_FULL[selectedMonth]} (วัน${formatThaiDate(dateStr).split(' ')[0]})${isExisting ? ' [วันหยุดปัจจุบัน]' : ''}</option>`;
+              }).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ชื่อวันหยุดราชการ / วันหยุดนักขัตฤกษ์:</label>
+            <input id="swal-holiday-name" class="w-full border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500" placeholder="เช่น วันเข้าพรรษา, วันแม่แห่งชาติ, วันมาฆบูชา" value="วันเข้าพรรษา" />
+          </div>
+        </div>
+      `,
+      didOpen: (popup) => {
+        const deleteButtons = popup.querySelectorAll('.swal-btn-delete-holiday');
+        deleteButtons.forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const target = btn as HTMLElement;
+            const targetDate = target.getAttribute('data-date');
+            const targetDay = target.getAttribute('data-day');
+            if (targetDate) {
+              storageService.removePublicHoliday(targetDate, true);
+              if (onRefreshData) onRefreshData();
+              Swal.close();
+              alertHelper.toastSuccess(`ยกเลิกวันหยุดวันที่ ${targetDay} เรียบร้อยแล้ว`);
+            }
+          });
+        });
+      },
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: '<i class="fa-solid fa-plus mr-1"></i> บันทึกวันหยุด',
+      cancelButtonText: 'ปิด',
+      confirmButtonColor: '#d97706',
+      cancelButtonColor: '#64748b',
+      customClass: {
+        popup: 'rounded-2xl font-sans'
+      },
+      preConfirm: () => {
+        const daySelect = document.getElementById('swal-holiday-day') as HTMLSelectElement;
+        const nameInput = document.getElementById('swal-holiday-name') as HTMLInputElement;
+        if (!daySelect || !nameInput) return null;
+        return {
+          day: parseInt(daySelect.value),
+          holidayName: nameInput.value.trim() || 'วันหยุดราชการ'
+        };
+      }
+    });
+
+    if (formValues) {
+      const { day, holidayName } = formValues;
+      const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      storageService.setPublicHoliday(dateStr, holidayName);
+      if (onRefreshData) onRefreshData();
+      alertHelper.toastSuccess(`กำหนดวันหยุด "${holidayName}" วันที่ ${day} ${THAI_MONTHS_FULL[selectedMonth]} สำเร็จ`);
+    }
+  };
+
   // URL for opening standalone printable window
   const printUrl = `${window.location.origin}${window.location.pathname}?tab=print&autoprint=true&reportType=${reportType}&month=${selectedMonth}&yearBE=${selectedYearBE}&group=${encodeURIComponent(selectedGroup)}&position=${encodeURIComponent(selectedPosition)}&userId=${selectedUserId}`;
 
@@ -139,6 +369,27 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {reportType === 'monthly' && (
+              <>
+                <button
+                  onClick={handleSyncAnnualHolidays}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer"
+                  title="ดึงวันหยุดราชการประจำปีและวันหยุดนักขัตฤกษ์ของไทยอัตโนมัติ"
+                >
+                  <i className="fa-solid fa-cloud-arrow-down text-slate-900"></i>
+                  <span>ดึงวันหยุดประจำปี</span>
+                </button>
+                <button
+                  onClick={handleOpenSetHolidayModal}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition cursor-pointer"
+                  title="กำหนดวันหยุดราชการประจำเดือน"
+                >
+                  <i className="fa-solid fa-calendar-plus text-amber-200"></i>
+                  <span>+ กำหนดวันหยุด</span>
+                </button>
+              </>
+            )}
+
             <button
               onClick={handlePrint}
               className="bg-blue-900 hover:bg-blue-950 text-white font-bold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
@@ -480,8 +731,9 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
                                             <td
                                               key={day}
                                               rowSpan={posUsers.length}
-                                              className="border border-slate-600 p-0 text-center bg-[#fee8e8] print:bg-[#fee8e8] align-middle select-none"
-                                              title={`${formatThaiDate(dateStr)}: วันหยุดราชการ (${holidayName})`}
+                                              onClick={() => handleHolidayColumnClick(day, dateStr, holidayName)}
+                                              className="border border-slate-600 p-0 text-center bg-[#fee8e8] print:bg-[#fee8e8] align-middle select-none cursor-pointer hover:bg-red-100 transition"
+                                              title={`${formatThaiDate(dateStr)}: วันหยุดราชการ (${holidayName}) - คลิกเพื่อแก้ไขหรือยกเลิก`}
                                             >
                                               <div className="h-full min-h-[50px] w-full flex items-center justify-center p-1">
                                                 <span
@@ -546,18 +798,63 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
             </table>
           </div>
 
-          {/* Official Legend */}
-          <div className="mt-3 text-[10px] text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
-            <span className="font-bold">ตัวย่อสัญลักษณ์:</span>
-            <span><b>/</b> = มาทำงาน</span>
-            <span><b>ศ</b> = ศึกษาต่อ</span>
-            <span><b>ป</b> = ลาป่วย</span>
-            <span><b>ก</b> = ลากิจ</span>
-            <span><b>ค</b> = ลาคลอด</span>
-            <span><b>อ</b> = ลาอุปสมบท</span>
-            <span><b>พ</b> = ลาพักร้อน</span>
-            <span><b>ร</b> = ราชการ</span>
-            <span><b>ส</b> = มาสาย</span>
+          {/* Official Legend & Monthly Public Holidays Box */}
+          <div className="mt-4 space-y-2.5 text-[10px] text-slate-700">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-bold">ตัวย่อสัญลักษณ์:</span>
+              <span><b>/</b> = มาทำงาน</span>
+              <span><b>ศ</b> = ศึกษาต่อ</span>
+              <span><b>ป</b> = ลาป่วย</span>
+              <span><b>ก</b> = ลากิจ</span>
+              <span><b>ค</b> = ลาคลอด</span>
+              <span><b>อ</b> = ลาอุปสมบท</span>
+              <span><b>พ</b> = ลาพักร้อน</span>
+              <span><b>ร</b> = ราชการ</span>
+              <span><b>ส</b> = มาสาย</span>
+              <span className="text-red-700 font-bold bg-red-50 print:bg-transparent px-1 rounded border border-red-200 print:border-none">
+                <b>ห</b> = วันหยุดราชการ
+              </span>
+            </div>
+
+            {/* กล่องพิมพ์วันหยุดราชการประจำเดือนลงในเอกสาร */}
+            {monthlyHolidaysList.length > 0 ? (
+              <div className="p-2.5 bg-amber-50/70 print:bg-slate-50 border border-amber-300 print:border-slate-500 rounded-lg text-left text-[10px] leading-relaxed">
+                <div className="font-bold text-amber-950 print:text-black flex items-center justify-between gap-1.5 mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <i className="fa-solid fa-umbrella-beach text-amber-600 print:hidden text-xs"></i>
+                    <span>วันหยุดราชการและวันหยุดนักขัตฤกษ์ ประจำเดือน{THAI_MONTHS_FULL[selectedMonth]} พ.ศ. {selectedYearBE}:</span>
+                  </div>
+                  <span className="text-[9px] text-slate-500 font-normal print:hidden">
+                    (คลิกที่ชื่อวันหยุดเพื่อแก้ไขหรือลบ)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-slate-800 print:text-black">
+                  {monthlyHolidaysList.map(h => (
+                    <div
+                      key={h.date}
+                      onClick={() => handleHolidayColumnClick(h.day, h.date, h.name)}
+                      className="flex items-center gap-1.5 cursor-pointer hover:text-blue-900 group"
+                      title="คลิกเพื่อแก้ไขชื่อหรือยกเลิกวันหยุดนี้"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-600 print:bg-black inline-block shrink-0"></span>
+                      <span>วันที่ <b>{h.day} {THAI_MONTHS_FULL[selectedMonth]}</b>: <span className="font-medium group-hover:underline">{h.name}</span></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 print:hidden flex items-center justify-between">
+                <span>(เดือนนี้ยังไม่มีการกำหนดวันหยุดราชการ)</span>
+                <button
+                  type="button"
+                  onClick={handleSyncAnnualHolidays}
+                  className="text-amber-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <i className="fa-solid fa-cloud-arrow-down text-xs"></i>
+                  <span>กดตรงนี้เพื่อดึงวันหยุดราชการประจำปี</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Official Signatures Block */}

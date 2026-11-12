@@ -122,18 +122,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, setting
             <i className="fa-solid fa-print text-base"></i>
             <span>4. สั่งพิมพ์เอกสารราชการ</span>
           </button>
-
-          <button
-            onClick={() => onSelectTab('php-code')}
-            className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ml-auto border ${
-              currentTab === 'php-code'
-                ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
-                : 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/60 hover:text-emerald-200'
-            }`}
-          >
-            <i className="fa-brands fa-php text-lg"></i>
-            <span>โค้ด PHP 8.x + phpMyAdmin</span>
-          </button>
         </div>
       </nav>
     </header>

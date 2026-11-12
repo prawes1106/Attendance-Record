@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 # ติดตั้ง dependencies ทั้งหมดรวมถึง devDependencies (vite)
-RUN npm install --include=dev
+RUN npm install --include=dev --legacy-peer-deps
 COPY . .
 RUN npm run build
 

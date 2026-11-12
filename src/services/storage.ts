@@ -70,48 +70,6 @@ export const storageService = {
       const parsed: AttendanceRecord[] = JSON.parse(raw);
       // เสาร์-อาทิตย์ ไม่ต้องลงเวลา: กรองข้อมูลเสาร์-อาทิตย์ออก
       const valid = parsed.filter(l => l && l.date && !isWeekend(l.date));
-
-      // ตรวจสอบตัวอย่างวันหยุดราชการตามภาพต้นฉบับ (13 ต.ค. วันคล้ายวันสวรรคต, 16 ต.ค. วันหยุดราชการกรณีพิเศษ)
-      const today = new Date();
-      const currentYearCE = today.getFullYear();
-      const allUsers = this.getUsers();
-
-      const sampleHolidays = [
-        { dateStr: `${currentYearCE}-10-13`, name: 'วันคล้ายวันสวรรคต' },
-        { dateStr: `${currentYearCE}-10-16`, name: 'วันหยุดราชการกรณีพิเศษ' },
-        { dateStr: `${currentYearCE}-${String(today.getMonth() + 1).padStart(2, '0')}-04`, name: 'วันเข้าพรรษา' },
-      ];
-
-      let updatedAny = false;
-      sampleHolidays.forEach(sh => {
-        if (!isWeekend(sh.dateStr)) {
-          const exists = valid.some(l => l.date === sh.dateStr && l.symbol === 'ห');
-          if (!exists) {
-            allUsers.forEach(u => {
-              const existingIdx = valid.findIndex(l => l.userId === u.id && l.date === sh.dateStr);
-              if (existingIdx >= 0) {
-                valid[existingIdx].symbol = 'ห';
-                valid[existingIdx].note = sh.name;
-              } else {
-                valid.push({
-                  id: `att_${u.id}_${sh.dateStr}`,
-                  userId: u.id,
-                  date: sh.dateStr,
-                  symbol: 'ห',
-                  note: sh.name,
-                  recordedBy: 'วันหยุดราชการ',
-                  updatedAt: new Date().toISOString()
-                });
-              }
-            });
-            updatedAny = true;
-          }
-        }
-      });
-      if (updatedAny) {
-        this.saveAttendanceLogs(valid);
-      }
-
       return valid;
     } catch {
       return [];
@@ -125,13 +83,16 @@ export const storageService = {
   },
 
   /**
-   * กำหนดวันหยุดราชการสำหรับวันที่เลือก (บันทึก ห พร้อมชื่อวันหยุดให้กับบุคลากรทุกคน)
+   * กำหนดหรือแก้ไขวันหยุดราชการสำหรับวันที่เลือก (บันทึก ห พร้อมชื่อวันหยุดให้กับบุคลากรทุกคน)
    */
-  setPublicHoliday(dateStr: string, holidayName: string, userIds: string[]): void {
+  setPublicHoliday(dateStr: string, holidayName: string, userIds?: string[]): void {
     if (isWeekend(dateStr)) return;
     const logs = this.getAttendanceLogs();
+    const allUsers = this.getUsers();
+    const targetUserIds = userIds && userIds.length > 0 ? userIds : allUsers.map(u => u.id);
     const name = holidayName.trim() || 'วันหยุดราชการ';
-    userIds.forEach(userId => {
+
+    targetUserIds.forEach(userId => {
       const idx = logs.findIndex(l => l.userId === userId && l.date === dateStr);
       if (idx >= 0) {
         logs[idx].symbol = 'ห';
@@ -156,22 +117,51 @@ export const storageService = {
   },
 
   /**
-   * ยกเลิกวันหยุดราชการสำหรับวันที่เลือก
+   * ยกเลิก/ลบวันหยุดราชการสำหรับวันที่เลือก
+   * @param dateStr วันที่ในรูปแบบ YYYY-MM-DD
+   * @param revertToNormal หากเป็น true จะเปลี่ยนสัญลักษณ์กลับเป็น '/' (มาทำงานปกติ) สำหรับทุกคน หากเป็น false จะลบ record ทิ้ง
    */
-  removePublicHoliday(dateStr: string): void {
+  removePublicHoliday(dateStr: string, revertToNormal: boolean = true): void {
     const logs = this.getAttendanceLogs();
-    const filtered = logs.filter(l => !(l.date === dateStr && l.symbol === 'ห'));
-    this.saveAttendanceLogs(filtered);
+    const allUsers = this.getUsers();
+
+    if (revertToNormal) {
+      // เมื่อยกเลิกวันหยุด ให้เปลี่ยนกลับเป็นวันปฏิบัติงานปกติ (/) สำหรับบุคลากรทุกคน
+      allUsers.forEach(u => {
+        const idx = logs.findIndex(l => l.userId === u.id && l.date === dateStr);
+        if (idx >= 0) {
+          logs[idx].symbol = '/';
+          logs[idx].note = undefined;
+          logs[idx].updatedAt = new Date().toISOString();
+        } else {
+          logs.push({
+            id: `att_${u.id}_${dateStr}`,
+            userId: u.id,
+            date: dateStr,
+            symbol: '/',
+            note: undefined,
+            recordedBy: 'วันปฏิบัติงานปกติ',
+            updatedAt: new Date().toISOString()
+          });
+        }
+      });
+      this.saveAttendanceLogs(logs);
+    } else {
+      const filtered = logs.filter(l => !(l.date === dateStr && l.symbol === 'ห'));
+      this.saveAttendanceLogs(filtered);
+    }
   },
 
   /**
    * ดึงและซิงก์วันหยุดราชการประจำปีอัตโนมัติสำหรับบุคลากรทุกคน
    * @param yearCE ปี ค.ศ.
-   * @param userIds รายชื่อบุคลากร
+   * @param userIds รายชื่อบุคลากร (หากไม่ระบุจะใช้บุคลากรทุกคน)
    * @param monthZeroIndexed หากระบุ จะซิงก์เฉพาะเดือนนั้น (0-11) ถ้าไม่ระบุจะซิงก์ทั้งปี
    */
-  syncAnnualPublicHolidays(yearCE: number, userIds: string[], monthZeroIndexed?: number): number {
+  syncAnnualPublicHolidays(yearCE: number, userIds?: string[], monthZeroIndexed?: number): number {
     const logs = this.getAttendanceLogs();
+    const allUsers = this.getUsers();
+    const targetUserIds = userIds && userIds.length > 0 ? userIds : allUsers.map(u => u.id);
     const holidays = monthZeroIndexed !== undefined
       ? getHolidaysForMonth(yearCE, monthZeroIndexed)
       : getHolidaysForYear(yearCE);
@@ -180,7 +170,7 @@ export const storageService = {
     holidays.forEach(h => {
       if (isWeekend(h.date)) return;
       count++;
-      userIds.forEach(userId => {
+      targetUserIds.forEach(userId => {
         const idx = logs.findIndex(l => l.userId === userId && l.date === h.date);
         if (idx >= 0) {
           logs[idx].symbol = 'ห';
