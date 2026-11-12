@@ -133,7 +133,11 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
     storageService.updateAttendanceMultipleDays(user.id, dateStrings, selectedSymbol, note);
     onSaved();
     onClose();
-    alertHelper.toastSuccess(`บันทึก ${selectedSymbol} สำหรับ ${dateStrings.length} วันทำการ เรียบร้อยแล้ว`);
+    if (selectedSymbol === 'ห') {
+      alertHelper.toastSuccess(`บันทึกวันหยุด (ห) จำนวน ${dateStrings.length} วัน เรียบร้อยแล้ว`);
+    } else {
+      alertHelper.toastSuccess(`บันทึก ${selectedSymbol} สำหรับ ${dateStrings.length} วันทำการ เรียบร้อยแล้ว`);
+    }
   };
 
   // Delete/Clear attendance for selected days
@@ -375,14 +379,20 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
           )}
 
           {/* Selection indicator label */}
-          <div className="mt-2.5 text-xs font-bold text-blue-700 flex items-center justify-between">
-            <span>เลือกแล้ว {selectedDays.length} วันทำการ</span>
-            {selectedDays.some(d => holidayMap.has(d)) && (
-              <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-semibold">
-                (มีวันหยุดราชการ {selectedDays.filter(d => holidayMap.has(d)).length} วัน)
-              </span>
-            )}
-          </div>
+          {(() => {
+            const workingSelectedCount = selectedDays.filter(d => !holidayMap.has(d)).length;
+            const holidaySelectedCount = selectedDays.filter(d => holidayMap.has(d)).length;
+            return (
+              <div className="mt-2.5 text-xs font-bold text-blue-700 flex items-center justify-between flex-wrap gap-1">
+                <span>เลือกแล้ว {workingSelectedCount} วันทำการ</span>
+                {holidaySelectedCount > 0 && (
+                  <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-semibold">
+                    วันหยุด {holidaySelectedCount} วัน (ไม่นับในวันทำการ)
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Section 2: เลือกสถานะ */}

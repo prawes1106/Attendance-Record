@@ -87,7 +87,15 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
     logsMap.set(`${log.userId}_${log.date}`, log.symbol);
   });
 
-  // รายการวันหยุดราชการประจำเดือน เพื่อแสดงผลและสั่งพิมพ์ลงในเอกสาร
+  // รายการวันที่ที่เป็นวันหยุดราชการ ('ห') เพื่อไม่ให้นำมานับรวมในวันทำการและยอดสะสมตั้งแต่ต้นงบ
+  const holidayDatesSet = new Set<string>();
+  attendanceLogs.forEach(log => {
+    if (log.symbol === 'ห' && !isWeekend(log.date)) {
+      holidayDatesSet.add(log.date);
+    }
+  });
+
+  // รายการวันหยุดราชการประจำเดือน
   const monthPrefix = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}`;
   const monthlyHolidaysMap = new Map<string, string>();
   attendanceLogs
@@ -97,14 +105,6 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
         monthlyHolidaysMap.set(l.date, l.note?.trim() || 'วันหยุดราชการ');
       }
     });
-
-  const monthlyHolidaysList = Array.from(monthlyHolidaysMap.entries())
-    .map(([date, name]) => ({
-      date,
-      day: parseInt(date.split('-')[2], 10),
-      name
-    }))
-    .sort((a, b) => a.day - b.day);
 
   const handleHolidayColumnClick = async (day: number, dateStr: string, currentHolidayName: string) => {
     const result = await Swal.fire({
@@ -585,7 +585,9 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
                   {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
                     const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const weekend = isWeekend(dateStr);
-                    const holidayRec = !weekend ? attendanceLogs.find(l => l.date === dateStr && l.symbol === 'ห') : undefined;
+                    const holidayRec = !weekend
+                      ? attendanceLogs.find(l => l.date === dateStr && l.symbol === 'ห' && filteredUsers.some(u => u.id === l.userId))
+                      : undefined;
                     const isDateHoliday = Boolean(holidayRec);
                     return (
                       <th
@@ -689,11 +691,23 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
                                 const fiscalStartCE = `${fiscalYearBE - 543 - 1}-10-01`;
                                 const monthEndCE = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
+                                // นับยอดสะสมตั้งแต่ต้นงบ โดยไม่นับวันหยุดเสาร์-อาทิตย์ และไม่นับวันหยุดราชการ (ห)
+                                const seenCumulativeDates = new Set<string>();
                                 attendanceLogs
-                                  .filter(log => log.userId === user.id && log.date >= fiscalStartCE && log.date <= monthEndCE && !isWeekend(log.date))
+                                  .filter(
+                                    log =>
+                                      log.userId === user.id &&
+                                      log.date >= fiscalStartCE &&
+                                      log.date <= monthEndCE &&
+                                      !isWeekend(log.date) &&
+                                      !holidayDatesSet.has(log.date)
+                                  )
                                   .forEach(log => {
-                                    if (cumulativeCounts[log.symbol] !== undefined) {
-                                      cumulativeCounts[log.symbol]++;
+                                    if (seenCumulativeDates.has(log.date)) return;
+                                    seenCumulativeDates.add(log.date);
+                                    const effectiveSymbol = logsMap.get(`${user.id}_${log.date}`) || log.symbol;
+                                    if (effectiveSymbol !== 'ห' && cumulativeCounts[effectiveSymbol] !== undefined) {
+                                      cumulativeCounts[effectiveSymbol]++;
                                     }
                                   });
 
@@ -709,7 +723,8 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
                                       <span className="font-bold text-blue-900">
                                         {Array.from({ length: daysInMonth }, (_, i) => i + 1).filter(day => {
                                           const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                          return !isWeekend(dateStr) && logsMap.get(`${user.id}_${dateStr}`) === '/';
+                                          const isDateHoliday = holidayDatesSet.has(dateStr);
+                                          return !isWeekend(dateStr) && !isDateHoliday && logsMap.get(`${user.id}_${dateStr}`) === '/';
                                         }).length}
                                       </span>
                                     </td>
@@ -719,7 +734,7 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
 
                                       // ตรวจสอบวันหยุดราชการ (ห)
                                       const holidayRec = !weekend
-                                        ? attendanceLogs.find(l => l.date === dateStr && l.symbol === 'ห')
+                                        ? attendanceLogs.find(l => l.date === dateStr && l.symbol === 'ห' && filteredUsers.some(u => u.id === l.userId))
                                         : undefined;
                                       const isHoliday = Boolean(holidayRec);
                                       const holidayName = holidayRec?.note?.trim() || 'วันหยุดราชการ';
@@ -798,63 +813,19 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
             </table>
           </div>
 
-          {/* Official Legend & Monthly Public Holidays Box */}
-          <div className="mt-4 space-y-2.5 text-[10px] text-slate-700">
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span className="font-bold">ตัวย่อสัญลักษณ์:</span>
-              <span><b>/</b> = มาทำงาน</span>
-              <span><b>ศ</b> = ศึกษาต่อ</span>
-              <span><b>ป</b> = ลาป่วย</span>
-              <span><b>ก</b> = ลากิจ</span>
-              <span><b>ค</b> = ลาคลอด</span>
-              <span><b>อ</b> = ลาอุปสมบท</span>
-              <span><b>พ</b> = ลาพักร้อน</span>
-              <span><b>ร</b> = ราชการ</span>
-              <span><b>ส</b> = มาสาย</span>
-              <span className="text-red-700 font-bold bg-red-50 print:bg-transparent px-1 rounded border border-red-200 print:border-none">
-                <b>ห</b> = วันหยุดราชการ
-              </span>
-            </div>
-
-            {/* กล่องพิมพ์วันหยุดราชการประจำเดือนลงในเอกสาร */}
-            {monthlyHolidaysList.length > 0 ? (
-              <div className="p-2.5 bg-amber-50/70 print:bg-slate-50 border border-amber-300 print:border-slate-500 rounded-lg text-left text-[10px] leading-relaxed">
-                <div className="font-bold text-amber-950 print:text-black flex items-center justify-between gap-1.5 mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <i className="fa-solid fa-umbrella-beach text-amber-600 print:hidden text-xs"></i>
-                    <span>วันหยุดราชการและวันหยุดนักขัตฤกษ์ ประจำเดือน{THAI_MONTHS_FULL[selectedMonth]} พ.ศ. {selectedYearBE}:</span>
-                  </div>
-                  <span className="text-[9px] text-slate-500 font-normal print:hidden">
-                    (คลิกที่ชื่อวันหยุดเพื่อแก้ไขหรือลบ)
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-slate-800 print:text-black">
-                  {monthlyHolidaysList.map(h => (
-                    <div
-                      key={h.date}
-                      onClick={() => handleHolidayColumnClick(h.day, h.date, h.name)}
-                      className="flex items-center gap-1.5 cursor-pointer hover:text-blue-900 group"
-                      title="คลิกเพื่อแก้ไขชื่อหรือยกเลิกวันหยุดนี้"
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-600 print:bg-black inline-block shrink-0"></span>
-                      <span>วันที่ <b>{h.day} {THAI_MONTHS_FULL[selectedMonth]}</b>: <span className="font-medium group-hover:underline">{h.name}</span></span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="p-2 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-500 print:hidden flex items-center justify-between">
-                <span>(เดือนนี้ยังไม่มีการกำหนดวันหยุดราชการ)</span>
-                <button
-                  type="button"
-                  onClick={handleSyncAnnualHolidays}
-                  className="text-amber-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <i className="fa-solid fa-cloud-arrow-down text-xs"></i>
-                  <span>กดตรงนี้เพื่อดึงวันหยุดราชการประจำปี</span>
-                </button>
-              </div>
-            )}
+          {/* Official Legend */}
+          <div className="mt-3 text-[10px] text-slate-700 flex flex-wrap gap-x-4 gap-y-1">
+            <span className="font-bold">ตัวย่อสัญลักษณ์:</span>
+            <span><b>/</b> = มาทำงาน</span>
+            <span><b>ศ</b> = ศึกษาต่อ</span>
+            <span><b>ป</b> = ลาป่วย</span>
+            <span><b>ก</b> = ลากิจ</span>
+            <span><b>ค</b> = ลาคลอด</span>
+            <span><b>อ</b> = ลาอุปสมบท</span>
+            <span><b>พ</b> = ลาพักร้อน</span>
+            <span><b>ร</b> = ราชการ</span>
+            <span><b>ส</b> = มาสาย</span>
+            <span><b>ห</b> = วันหยุดราชการ</span>
           </div>
 
           {/* Official Signatures Block */}
@@ -965,12 +936,13 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
                               </tr>
 
                               {posUsers.map((user, uIdx) => {
-                                // ดึงประวัติการลงเวลาและวันลาทั้งหมดของบุคลากรท่านนี้ภายในปีงบประมาณที่เลือก
+                                // ดึงประวัติการลงเวลาและวันลาทั้งหมดของบุคลากรท่านนี้ภายในปีงบประมาณที่เลือก (ไม่นับวันหยุดเสาร์-อาทิตย์ และวันหยุดราชการ)
                                 const userFiscalLogs = attendanceLogs.filter(log =>
                                   log.userId === user.id &&
                                   log.date >= fiscalRange.startCE &&
                                   log.date <= fiscalRange.endCE &&
-                                  !isWeekend(log.date)
+                                  !isWeekend(log.date) &&
+                                  !holidayDatesSet.has(log.date)
                                 );
 
                                 // นับจำนวนวันลาแต่ละประเภทจากบันทึกเวลาจริง
@@ -1091,7 +1063,8 @@ export const PrintReportsPage: React.FC<PrintReportsPageProps> = ({
               log.userId === user.id &&
               log.date >= fiscalRange.startCE &&
               log.date <= fiscalRange.endCE &&
-              !isWeekend(log.date)
+              !isWeekend(log.date) &&
+              !holidayDatesSet.has(log.date)
             );
 
             const vacationDaysFromLogs = userFiscalLogs.filter(l => l.symbol === 'พ').length;

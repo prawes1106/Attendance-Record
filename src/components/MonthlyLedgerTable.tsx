@@ -98,6 +98,14 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
     logsMap.set(`${log.userId}_${log.date}`, log);
   });
 
+  // Set of dates marked as public holiday ('ห') — excluded from working day and cumulative leave counts
+  const holidayDatesSet = new Set<string>();
+  attendanceLogs.forEach(log => {
+    if (log.symbol === 'ห' && !isWeekend(log.date)) {
+      holidayDatesSet.add(log.date);
+    }
+  });
+
   // Calculate cumulative attendance counts from fiscal start (1 Oct) to current month
   // Fiscal year for selectedMonth and selectedYearBE:
   // If selectedMonth >= 9 (Oct, Nov, Dec), fiscal year is selectedYearBE + 1
@@ -115,7 +123,8 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
         log.symbol === symbol &&
         log.date >= fiscalStartCE &&
         log.date <= monthEndCE &&
-        !isWeekend(log.date)
+        !isWeekend(log.date) &&
+        !holidayDatesSet.has(log.date)
       );
     }).length;
   };
@@ -129,7 +138,8 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
           log.symbol === symbol &&
           log.date >= fiscalStartCE &&
           log.date <= monthEndCE &&
-          !isWeekend(log.date)
+          !isWeekend(log.date) &&
+          !holidayDatesSet.has(log.date)
         );
       })
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -138,7 +148,13 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
   const getMonthCount = (userId: string, symbol: AttendanceSymbol): number => {
     const monthPrefix = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}`;
     return attendanceLogs.filter(log => {
-      return log.userId === userId && log.symbol === symbol && log.date.startsWith(monthPrefix) && !isWeekend(log.date);
+      return (
+        log.userId === userId &&
+        log.symbol === symbol &&
+        log.date.startsWith(monthPrefix) &&
+        !isWeekend(log.date) &&
+        !holidayDatesSet.has(log.date)
+      );
     }).length;
   };
 
