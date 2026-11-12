@@ -146,15 +146,34 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
 
     const confirmed = await alertHelper.confirm(
       'ยืนยันลบการลงเวลา',
-      `ต้องการลบการลงเวลาของ ${user.title}${user.firstName} ${user.lastName} ในวันที่เลือกทั้งหมด ${validDates.length} วัน หรือไม่?`,
+      `ต้องการลบการลงเวลาในวันที่เลือกทั้งหมด ${validDates.length} วัน หรือไม่? (หากมีวันหยุดราชการ ระบบจะยกเลิกวันหยุดกลับเป็นวันทำการปกติ)`,
       'ยืนยันลบ'
     );
 
     if (confirmed) {
       storageService.deleteAttendanceMultipleDays(user.id, validDates);
+      validDates.forEach(d => {
+        storageService.removePublicHoliday(d, true);
+      });
       onSaved();
       onClose();
-      alertHelper.toastInfo(`ลบการลงเวลา ${validDates.length} วัน เรียบร้อยแล้ว`);
+      alertHelper.toastInfo(`ลบการลงเวลาและยกเลิกวันหยุดเรียบร้อยแล้ว`);
+    }
+  };
+
+  const handleCancelHoliday = async (dayNum: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const dStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    const confirmed = await alertHelper.confirm(
+      'ยกเลิกวันหยุดราชการ',
+      `ต้องการยกเลิกวันหยุดวันที่ ${dayNum} กลับเป็นวันทำการปกติ (/) สำหรับทุกคน หรือไม่?`,
+      'ยืนยันยกเลิกวันหยุด'
+    );
+    if (confirmed) {
+      storageService.removePublicHoliday(dStr, true);
+      onSaved();
+      onClose();
+      alertHelper.toastSuccess(`ยกเลิกวันหยุดวันที่ ${dayNum} กลับเป็นวันทำการปกติเรียบร้อยแล้ว`);
     }
   };
 
@@ -329,11 +348,25 @@ export const MultiDayAttendanceModal: React.FC<MultiDayAttendanceModalProps> = (
                             วันที่ <b>{d}</b>: {info.name}
                           </span>
                         </span>
-                        {info.isWeekend ? (
-                          <span className="text-[9px] text-slate-400 shrink-0">(เสาร์-อาทิตย์)</span>
-                        ) : isSelected ? (
-                          <span className="text-[9px] text-blue-700 font-bold shrink-0">✓ เลือกแล้ว</span>
-                        ) : null}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {info.isWeekend ? (
+                            <span className="text-[9px] text-slate-400">(เสาร์-อาทิตย์)</span>
+                          ) : (
+                            <>
+                              {isSelected && (
+                                <span className="text-[9px] text-blue-700 font-bold mr-1">✓ เลือก</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => handleCancelHoliday(d, e)}
+                                className="text-red-600 hover:text-red-800 text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 hover:bg-red-100 transition border border-red-200 cursor-pointer"
+                                title="ยกเลิกวันหยุดนี้กลับเป็นวันทำการปกติ"
+                              >
+                                <i className="fa-solid fa-trash-can mr-0.5"></i> ลบ
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

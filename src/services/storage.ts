@@ -125,14 +125,25 @@ export const storageService = {
     const logs = this.getAttendanceLogs();
     const allUsers = this.getUsers();
 
+    // 1. กวาดล้างและเปลี่ยนทุก record ใน logs ที่มี date === dateStr และ symbol === 'ห' ให้เป็น '/'
+    logs.forEach(l => {
+      if (l.date === dateStr && l.symbol === 'ห') {
+        l.symbol = '/';
+        l.note = undefined;
+        l.updatedAt = new Date().toISOString();
+      }
+    });
+
+    // 2. ให้แน่ใจว่าบุคลากรทุกคนใน allUsers มี record '/' สำหรับวันนี้
     if (revertToNormal) {
-      // เมื่อยกเลิกวันหยุด ให้เปลี่ยนกลับเป็นวันปฏิบัติงานปกติ (/) สำหรับบุคลากรทุกคน
       allUsers.forEach(u => {
-        const idx = logs.findIndex(l => l.userId === u.id && l.date === dateStr);
-        if (idx >= 0) {
-          logs[idx].symbol = '/';
-          logs[idx].note = undefined;
-          logs[idx].updatedAt = new Date().toISOString();
+        const userLogs = logs.filter(l => l.userId === u.id && l.date === dateStr);
+        if (userLogs.length > 0) {
+          userLogs.forEach(l => {
+            l.symbol = '/';
+            l.note = undefined;
+            l.updatedAt = new Date().toISOString();
+          });
         } else {
           logs.push({
             id: `att_${u.id}_${dateStr}`,
@@ -145,11 +156,11 @@ export const storageService = {
           });
         }
       });
-      this.saveAttendanceLogs(logs);
-    } else {
-      const filtered = logs.filter(l => !(l.date === dateStr && l.symbol === 'ห'));
-      this.saveAttendanceLogs(filtered);
     }
+
+    // 3. กรองและตัดทิ้ง record 'ห' ใดๆ ที่อาจตกค้างบน dateStr ให้หมดสิ้น 100%
+    const cleanLogs = logs.filter(l => !(l.date === dateStr && l.symbol === 'ห'));
+    this.saveAttendanceLogs(cleanLogs);
   },
 
   /**

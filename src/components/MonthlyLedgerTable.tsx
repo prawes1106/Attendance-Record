@@ -693,7 +693,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                           const dateStr = `${yearCE}-${String(selectedMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                           const weekend = isWeekend(dateStr);
                           const holidayRec = !weekend
-                            ? Array.from(logsMap.values()).find(l => l.date === dateStr && l.symbol === 'ห')
+                            ? filteredUsers.map(u => logsMap.get(`${u.id}_${dateStr}`)).find(l => l && l.symbol === 'ห')
                             : undefined;
                           const isHoliday = Boolean(holidayRec);
                           const holidayName = holidayRec?.note?.trim() || 'วันหยุดราชการ';
@@ -781,7 +781,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
 
                               // ตรวจสอบวันหยุดราชการ (ห)
                               const holidayRec = !weekend
-                                ? Array.from(logsMap.values()).find(l => l.date === dateStr && l.symbol === 'ห')
+                                ? filteredUsers.map(u => logsMap.get(`${u.id}_${dateStr}`)).find(l => l && l.symbol === 'ห')
                                 : undefined;
                               const isHoliday = Boolean(holidayRec);
 
