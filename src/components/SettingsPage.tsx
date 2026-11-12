@@ -53,6 +53,69 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefreshD
     error?: string;
   }>>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleExportBackup = () => {
+    const backup = storageService.exportFullBackup();
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStamp = new Date().toISOString().split('T')[0];
+    a.href = url;
+    a.download = `ku-attendance-backup-${dateStamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alertHelper.toastSuccess('ดาวน์โหลดไฟล์สำรองข้อมูลเรียบร้อยแล้ว');
+  };
+
+  const handleImportBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async event => {
+      try {
+        const parsed = JSON.parse(String(event.target?.result || '{}'));
+        if (!Array.isArray(parsed.users) && !Array.isArray(parsed.attendanceLogs)) {
+          alertHelper.error('ไฟล์ไม่ถูกต้อง', 'ไม่พบข้อมูลบุคลากรหรือการลงเวลาในไฟล์สำรองนี้');
+          return;
+        }
+        const confirmed = await alertHelper.confirm(
+          'ยืนยันกู้คืนข้อมูลจากไฟล์สำรอง',
+          `พบข้อมูลบุคลากร ${parsed.users?.length || 0} ท่าน และรายการลงเวลา ${parsed.attendanceLogs?.length || 0} รายการ ต้องการนำเข้าแทนที่ข้อมูลปัจจุบันหรือไม่?`,
+          'ยืนยันนำเข้า'
+        );
+        if (!confirmed) return;
+
+        await storageService.importFullBackup(parsed);
+        setFormData(storageService.getSettings());
+        onRefreshData();
+        alertHelper.success('กู้คืนข้อมูลสำเร็จ', 'อัปเดตข้อมูลเข้าสู่ระบบและฐานข้อมูลเรียบร้อยแล้ว');
+      } catch {
+        alertHelper.error('อ่านไฟล์ไม่สำเร็จ', 'กรุณาเลือกไฟล์ .JSON ที่ส่งออกจากระบบนี้เท่านั้น');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  const handlePushLocalToDb = async () => {
+    const confirmed = await alertHelper.confirm(
+      'ส่งข้อมูลจากเบราว์เซอร์เข้าสู่ฐานข้อมูล NAS',
+      'ระบบจะนำข้อมูลบุคลากร การลงเวลา และวันหยุดทั้งหมดที่อยู่ในเครื่องนี้ไปบันทึกทับใน MariaDB บน NAS ต้องการดำเนินการต่อหรือไม่?',
+      'ส่งข้อมูลขึ้นฐานข้อมูล'
+    );
+    if (!confirmed) return;
+    const ok = await storageService.pushLocalToServer();
+    if (ok) {
+      onRefreshData();
+      alertHelper.success('ซิงก์ข้อมูลสำเร็จ', 'บันทึกข้อมูลเข้าสู่ฐานข้อมูล MariaDB บน NAS เรียบร้อยแล้ว');
+    } else {
+      alertHelper.warning('ยังไม่พบการเชื่อมต่อ MariaDB', 'ระบบนี้กำลังทำงานในโหมดเบราว์เซอร์ (ยังไม่พบฐานข้อมูล MariaDB ที่เชื่อมต่ออยู่)');
+    }
+  };
 
   const sampleCsvData = `ชื่อ-นามสกุล, กลุ่มงาน, ตำแหน่ง, วันลาสะสม
 นายสุรศักดิ์ ใจกล้า, ข้าราชการ+ลูกจ้าง, ลูกจ้างประจำ, 12
@@ -815,6 +878,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefreshD
             </div>
           </div>
         )}
+      </div>
+
+      {/* 3. สำรองข้อมูลและเชื่อมต่อฐานข้อมูล MariaDB */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+        <div className="pb-3 border-b border-slate-100 flex items-center gap-2 font-bold text-slate-800 text-sm">
+          <i className="fa-solid fa-database text-blue-800 text-base"></i>
+          <span>สำรองข้อมูล กู้คืนข้อมูล และฐานข้อมูล NAS (MariaDB)</span>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          ท่านสามารถดาวน์โหลดข้อมูลทั้งหมด (รายชื่อบุคลากร, การลงเวลา, วันหยุด, การตั้งค่า) เก็บไว้เป็นไฟล์สำรอง <b>.JSON</b> หรือกู้คืนข้อมูลจากไฟล์สำรองเข้าสู่ระบบและฐานข้อมูล MariaDB บน NAS ได้ทันที
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleExportBackup}
+            className="bg-blue-900 hover:bg-blue-950 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-xs transition"
+          >
+            <i className="fa-solid fa-download text-amber-400"></i>
+            <span>สำรองข้อมูลทั้งหมด (.JSON)</span>
+          </button>
+
+          <input
+            type="file"
+            ref={backupInputRef}
+            accept=".json,application/json"
+            onChange={handleImportBackupFile}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => backupInputRef.current?.click()}
+            className="bg-white hover:bg-slate-100 text-slate-800 font-bold px-4 py-2.5 rounded-xl border border-slate-300 text-xs flex items-center gap-2 cursor-pointer shadow-xs transition"
+          >
+            <i className="fa-solid fa-upload text-emerald-600"></i>
+            <span>กู้คืน / นำเข้าไฟล์สำรอง (.JSON)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePushLocalToDb}
+            className="bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold px-4 py-2.5 rounded-xl border border-amber-300 text-xs flex items-center gap-2 cursor-pointer shadow-xs transition"
+          >
+            <i className="fa-solid fa-arrows-rotate text-amber-700"></i>
+            <span>ส่งข้อมูลเครื่องนี้เข้า MariaDB บน NAS</span>
+          </button>
+        </div>
       </div>
     </div>
   );

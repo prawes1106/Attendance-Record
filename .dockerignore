@@ -1,5 +1,7 @@
 node_modules
 dist
+mariadb_data
+.env
 .git
 .github
 *.log

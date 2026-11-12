@@ -7,8 +7,149 @@ import { getHolidaysForYear, getHolidaysForMonth } from '../data/thaiHolidays';
 const STORAGE_KEY_SETTINGS = 'thai_gov_attendance_settings_v1';
 const STORAGE_KEY_USERS = 'thai_gov_attendance_users_v1';
 const STORAGE_KEY_LOGS = 'thai_gov_attendance_logs_v1';
+const STORAGE_KEY_NOTES = 'thai_gov_monthly_notes_v1';
+
+let serverDbEnabled = false;
+let syncQueue: Promise<void> = Promise.resolve();
+
+function enqueueApiSync(task: () => Promise<void>): void {
+  if (!serverDbEnabled) return;
+  syncQueue = syncQueue
+    .then(() => task())
+    .catch(err => {
+      console.warn('MariaDB sync error:', err);
+    });
+}
+
+async function apiJson(url: string, method: string, body?: unknown): Promise<any> {
+  const res = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    throw new Error(`API ${method} ${url} failed (${res.status})`);
+  }
+  return res.json();
+}
+
+function persistLogsLocally(logs: AttendanceRecord[]): AttendanceRecord[] {
+  const cleanLogs = logs.filter(l => l && l.date && !isWeekend(l.date));
+  localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(cleanLogs));
+  return cleanLogs;
+}
+
+export interface FullBackupData {
+  version: number;
+  exportedAt: string;
+  settings: SystemSettings;
+  users: UserPersonnel[];
+  attendanceLogs: AttendanceRecord[];
+  monthlyNotes: Record<string, string>;
+}
 
 export const storageService = {
+  isServerDbEnabled(): boolean {
+    return serverDbEnabled;
+  },
+
+  async initFromServer(): Promise<{ dbConnected: boolean; migratedFromLocal: boolean }> {
+    try {
+      const data = await apiJson('/api/bootstrap', 'GET');
+      if (!data?.dbConnected) {
+        serverDbEnabled = false;
+        return { dbConnected: false, migratedFromLocal: false };
+      }
+
+      serverDbEnabled = true;
+
+      if (data.isEmpty) {
+        const localPayload = {
+          settings: this.getSettings(),
+          users: this.getUsers(),
+          attendanceLogs: this.getAttendanceLogs(),
+          monthlyNotes: this.getMonthlyNotes(),
+        };
+        await apiJson('/api/import-all', 'POST', localPayload);
+        return { dbConnected: true, migratedFromLocal: true };
+      }
+
+      if (data.settings) {
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ ...INITIAL_SYSTEM_SETTINGS, ...data.settings }));
+      }
+      if (Array.isArray(data.users) && data.users.length > 0) {
+        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(data.users));
+      }
+      if (Array.isArray(data.attendanceLogs)) {
+        persistLogsLocally(data.attendanceLogs);
+      }
+      if (data.monthlyNotes && typeof data.monthlyNotes === 'object') {
+        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(data.monthlyNotes));
+      }
+
+      return { dbConnected: true, migratedFromLocal: false };
+    } catch {
+      serverDbEnabled = false;
+      return { dbConnected: false, migratedFromLocal: false };
+    }
+  },
+
+  exportFullBackup(): FullBackupData {
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: this.getSettings(),
+      users: this.getUsers(),
+      attendanceLogs: this.getAttendanceLogs(),
+      monthlyNotes: this.getMonthlyNotes(),
+    };
+  },
+
+  async importFullBackup(backup: Partial<FullBackupData>): Promise<void> {
+    if (backup.settings) {
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify({ ...INITIAL_SYSTEM_SETTINGS, ...backup.settings }));
+    }
+    if (Array.isArray(backup.users)) {
+      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(backup.users));
+    }
+    if (Array.isArray(backup.attendanceLogs)) {
+      persistLogsLocally(backup.attendanceLogs);
+    }
+    if (backup.monthlyNotes && typeof backup.monthlyNotes === 'object') {
+      localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(backup.monthlyNotes));
+    }
+
+    if (serverDbEnabled) {
+      await syncQueue;
+      await apiJson('/api/import-all', 'POST', {
+        settings: this.getSettings(),
+        users: this.getUsers(),
+        attendanceLogs: this.getAttendanceLogs(),
+        monthlyNotes: this.getMonthlyNotes(),
+      });
+    }
+  },
+
+  async pushLocalToServer(): Promise<boolean> {
+    try {
+      await syncQueue;
+      const res = await apiJson('/api/import-all', 'POST', {
+        settings: this.getSettings(),
+        users: this.getUsers(),
+        attendanceLogs: this.getAttendanceLogs(),
+        monthlyNotes: this.getMonthlyNotes(),
+      });
+      if (res?.mode === 'mariadb' || res?.ok) {
+        const health = await apiJson('/api/health', 'GET');
+        serverDbEnabled = Boolean(health?.dbConnected);
+        return Boolean(health?.dbConnected);
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  },
+
   getSettings(): SystemSettings {
     const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
     if (!raw) return INITIAL_SYSTEM_SETTINGS;
@@ -21,12 +162,13 @@ export const storageService = {
 
   saveSettings(settings: SystemSettings): void {
     localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    enqueueApiSync(() => apiJson('/api/settings', 'PUT', settings));
   },
 
   getUsers(): UserPersonnel[] {
     const raw = localStorage.getItem(STORAGE_KEY_USERS);
     if (!raw) {
-      this.saveUsers(INITIAL_USERS);
+      localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_USERS));
       return INITIAL_USERS;
     }
     try {
@@ -44,7 +186,7 @@ export const storageService = {
       const hasScreenshotStaff = migrated.some(u => u.id === 'u_sn' || u.position === 'งานมหาวิทยาลัย(เปลี่ยสถานภาพ)');
       if (!hasScreenshotStaff) {
         const combined = [...INITIAL_USERS, ...migrated.filter(p => !INITIAL_USERS.some(iu => iu.id === p.id))];
-        this.saveUsers(combined);
+        localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(combined));
         return combined;
       }
 
@@ -56,6 +198,7 @@ export const storageService = {
 
   saveUsers(users: UserPersonnel[]): void {
     localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
+    enqueueApiSync(() => apiJson('/api/users', 'PUT', { users }));
   },
 
   getAttendanceLogs(): AttendanceRecord[] {
@@ -63,7 +206,7 @@ export const storageService = {
     if (!raw) {
       const initialUsers = this.getUsers();
       const seedLogs = generateSeedAttendance(initialUsers).filter(l => !isWeekend(l.date));
-      this.saveAttendanceLogs(seedLogs);
+      persistLogsLocally(seedLogs);
       return seedLogs;
     }
     try {
@@ -78,8 +221,8 @@ export const storageService = {
 
   saveAttendanceLogs(logs: AttendanceRecord[]): void {
     // เสาร์-อาทิตย์ ไม่ต้องลงเวลา: บันทึกเฉพาะวันทำการ
-    const cleanLogs = logs.filter(l => l && l.date && !isWeekend(l.date));
-    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(cleanLogs));
+    const cleanLogs = persistLogsLocally(logs);
+    enqueueApiSync(() => apiJson('/api/attendance/replace-all', 'PUT', { logs: cleanLogs }));
   },
 
   /**
@@ -91,6 +234,7 @@ export const storageService = {
     const allUsers = this.getUsers();
     const targetUserIds = userIds && userIds.length > 0 ? userIds : allUsers.map(u => u.id);
     const name = holidayName.trim() || 'วันหยุดราชการ';
+    const upserted: AttendanceRecord[] = [];
 
     targetUserIds.forEach(userId => {
       const idx = logs.findIndex(l => l.userId === userId && l.date === dateStr);
@@ -101,8 +245,9 @@ export const storageService = {
         logs[idx].checkOutTime = undefined;
         logs[idx].isLate = false;
         logs[idx].updatedAt = new Date().toISOString();
+        upserted.push(logs[idx]);
       } else {
-        logs.push({
+        const rec: AttendanceRecord = {
           id: `att_${userId}_${dateStr}`,
           userId,
           date: dateStr,
@@ -110,10 +255,13 @@ export const storageService = {
           note: name,
           recordedBy: 'วันหยุดราชการ',
           updatedAt: new Date().toISOString()
-        });
+        };
+        logs.push(rec);
+        upserted.push(rec);
       }
     });
-    this.saveAttendanceLogs(logs);
+    persistLogsLocally(logs);
+    enqueueApiSync(() => apiJson('/api/attendance/bulk-upsert', 'POST', { records: upserted }));
   },
 
   /**
@@ -124,6 +272,7 @@ export const storageService = {
   removePublicHoliday(dateStr: string, revertToNormal: boolean = true): void {
     const logs = this.getAttendanceLogs();
     const allUsers = this.getUsers();
+    const upserted: AttendanceRecord[] = [];
 
     // 1. กวาดล้างและเปลี่ยนทุก record ใน logs ที่มี date === dateStr และ symbol === 'ห' ให้เป็น '/'
     logs.forEach(l => {
@@ -143,9 +292,10 @@ export const storageService = {
             l.symbol = '/';
             l.note = undefined;
             l.updatedAt = new Date().toISOString();
+            upserted.push(l);
           });
         } else {
-          logs.push({
+          const rec: AttendanceRecord = {
             id: `att_${u.id}_${dateStr}`,
             userId: u.id,
             date: dateStr,
@@ -153,14 +303,22 @@ export const storageService = {
             note: undefined,
             recordedBy: 'วันปฏิบัติงานปกติ',
             updatedAt: new Date().toISOString()
-          });
+          };
+          logs.push(rec);
+          upserted.push(rec);
         }
       });
     }
 
     // 3. กรองและตัดทิ้ง record 'ห' ใดๆ ที่อาจตกค้างบน dateStr ให้หมดสิ้น 100%
     const cleanLogs = logs.filter(l => !(l.date === dateStr && l.symbol === 'ห'));
-    this.saveAttendanceLogs(cleanLogs);
+    persistLogsLocally(cleanLogs);
+    enqueueApiSync(async () => {
+      await apiJson('/api/attendance/bulk-delete', 'POST', { holidayDate: dateStr });
+      if (upserted.length > 0) {
+        await apiJson('/api/attendance/bulk-upsert', 'POST', { records: upserted });
+      }
+    });
   },
 
   /**
@@ -178,6 +336,7 @@ export const storageService = {
       : getHolidaysForYear(yearCE);
 
     let count = 0;
+    const upserted: AttendanceRecord[] = [];
     holidays.forEach(h => {
       if (isWeekend(h.date)) return;
       count++;
@@ -190,8 +349,9 @@ export const storageService = {
           logs[idx].checkOutTime = undefined;
           logs[idx].isLate = false;
           logs[idx].updatedAt = new Date().toISOString();
+          upserted.push(logs[idx]);
         } else {
-          logs.push({
+          const rec: AttendanceRecord = {
             id: `att_${userId}_${h.date}`,
             userId,
             date: h.date,
@@ -199,12 +359,15 @@ export const storageService = {
             note: h.name,
             recordedBy: 'วันหยุดราชการประจำปี',
             updatedAt: new Date().toISOString()
-          });
+          };
+          logs.push(rec);
+          upserted.push(rec);
         }
       });
     });
 
-    this.saveAttendanceLogs(logs);
+    persistLogsLocally(logs);
+    enqueueApiSync(() => apiJson('/api/attendance/bulk-upsert', 'POST', { records: upserted }));
     return count;
   },
 
@@ -248,7 +411,8 @@ export const storageService = {
       logs.push(updatedRecord);
     }
 
-    this.saveAttendanceLogs(logs);
+    persistLogsLocally(logs);
+    enqueueApiSync(() => apiJson('/api/attendance/bulk-upsert', 'POST', { records: [updatedRecord] }));
     return updatedRecord;
   },
 
@@ -265,11 +429,12 @@ export const storageService = {
     if (validDates.length === 0) return;
 
     const logs = this.getAttendanceLogs();
+    const upserted: AttendanceRecord[] = [];
     validDates.forEach(dateStr => {
       const idx = logs.findIndex(l => l.userId === userId && l.date === dateStr);
-      let checkIn = symbol === '/' ? '08:25' : (symbol === 'ส' ? '08:45' : undefined);
-      let checkOut = (symbol === '/' || symbol === 'ส') ? '16:30' : undefined;
-      let isLate = symbol === 'ส';
+      const checkIn = symbol === '/' ? '08:25' : (symbol === 'ส' ? '08:45' : undefined);
+      const checkOut = (symbol === '/' || symbol === 'ส') ? '16:30' : undefined;
+      const isLate = symbol === 'ส';
 
       if (idx >= 0) {
         logs[idx].symbol = symbol;
@@ -278,8 +443,9 @@ export const storageService = {
         logs[idx].isLate = isLate;
         if (note) logs[idx].note = note;
         logs[idx].updatedAt = new Date().toISOString();
+        upserted.push(logs[idx]);
       } else {
-        logs.push({
+        const rec: AttendanceRecord = {
           id: `att_${userId}_${dateStr}`,
           userId,
           date: dateStr,
@@ -290,10 +456,13 @@ export const storageService = {
           note: note || '',
           recordedBy: 'ลงเวลาหลายวัน',
           updatedAt: new Date().toISOString()
-        });
+        };
+        logs.push(rec);
+        upserted.push(rec);
       }
     });
-    this.saveAttendanceLogs(logs);
+    persistLogsLocally(logs);
+    enqueueApiSync(() => apiJson('/api/attendance/bulk-upsert', 'POST', { records: upserted }));
   },
 
   /**
@@ -303,7 +472,8 @@ export const storageService = {
     const logs = this.getAttendanceLogs();
     const dateSet = new Set(dateStrings);
     const filtered = logs.filter(l => !(l.userId === userId && dateSet.has(l.date)));
-    this.saveAttendanceLogs(filtered);
+    persistLogsLocally(filtered);
+    enqueueApiSync(() => apiJson('/api/attendance/bulk-delete', 'POST', { userId, dates: dateStrings }));
   },
 
   /**
@@ -312,6 +482,7 @@ export const storageService = {
   markAllPresent(dateStr: string, userIds: string[]): void {
     if (isWeekend(dateStr)) return; // เสาร์-อาทิตย์ ไม่ต้องลงเวลา
     const logs = this.getAttendanceLogs();
+    const upserted: AttendanceRecord[] = [];
     userIds.forEach(userId => {
       const idx = logs.findIndex(l => l.userId === userId && l.date === dateStr);
       if (idx >= 0) {
@@ -320,8 +491,9 @@ export const storageService = {
         logs[idx].checkOutTime = logs[idx].checkOutTime || '16:30';
         logs[idx].isLate = false;
         logs[idx].updatedAt = new Date().toISOString();
+        upserted.push(logs[idx]);
       } else {
-        logs.push({
+        const rec: AttendanceRecord = {
           id: `att_${userId}_${dateStr}`,
           userId,
           date: dateStr,
@@ -331,17 +503,20 @@ export const storageService = {
           isLate: false,
           recordedBy: 'บันทึกพร้อมกันทั้งกลุ่ม',
           updatedAt: new Date().toISOString()
-        });
+        };
+        logs.push(rec);
+        upserted.push(rec);
       }
     });
-    this.saveAttendanceLogs(logs);
+    persistLogsLocally(logs);
+    enqueueApiSync(() => apiJson('/api/attendance/bulk-upsert', 'POST', { records: upserted }));
   },
 
   /**
    * บันทึกหรือดึงหมายเหตุประจำเดือนของบุคลากร
    */
   getMonthlyNotes(): Record<string, string> {
-    const raw = localStorage.getItem('thai_gov_monthly_notes_v1');
+    const raw = localStorage.getItem(STORAGE_KEY_NOTES);
     if (!raw) return {};
     try {
       return JSON.parse(raw);
@@ -363,14 +538,15 @@ export const storageService = {
     } else {
       delete notes[key];
     }
-    localStorage.setItem('thai_gov_monthly_notes_v1', JSON.stringify(notes));
+    localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notes));
+    enqueueApiSync(() => apiJson('/api/monthly-note', 'PUT', { userId, yearBE, month, note }));
   },
 
   resetAllData(): void {
     localStorage.removeItem(STORAGE_KEY_SETTINGS);
     localStorage.removeItem(STORAGE_KEY_USERS);
     localStorage.removeItem(STORAGE_KEY_LOGS);
-    localStorage.removeItem('thai_gov_monthly_notes_v1');
+    localStorage.removeItem(STORAGE_KEY_NOTES);
   }
 };
 

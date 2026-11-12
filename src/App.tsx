@@ -25,7 +25,14 @@ export default function App() {
   };
 
   useEffect(() => {
+    let active = true;
     refreshData();
+    storageService.initFromServer().then(() => {
+      if (active) {
+        refreshData();
+      }
+    });
+
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     if (tabParam === 'print' || tabParam === 'users' || tabParam === 'settings' || tabParam === 'attendance') {
@@ -41,8 +48,14 @@ export default function App() {
           console.warn('Autoprint failed:', e);
         }
       }, 700);
-      return () => clearTimeout(timer);
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
     }
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
