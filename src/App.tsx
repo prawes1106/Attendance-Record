@@ -68,7 +68,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 print:p-0 print:m-0 print:max-w-none print:w-full">
+      <main className="flex-1 w-full max-w-none mx-auto px-3 sm:px-5 lg:px-6 py-5 print:p-0 print:m-0 print:max-w-none print:w-full">
         {currentTab === 'attendance' && (
           <AttendancePage
             users={users}
@@ -105,7 +105,7 @@ export default function App() {
 
       {/* Official Footer */}
       <footer className="no-print bg-white border-t border-slate-200 mt-auto py-5 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 space-y-1">
+        <div className="w-full max-w-none mx-auto px-4 sm:px-6 space-y-1">
           <p className="font-semibold text-slate-700">
             ระบบบันทึกเวลาปฏิบัติราชการและสรุปวันลาตามปีงบประมาณ
           </p>

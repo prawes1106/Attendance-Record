@@ -438,21 +438,21 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
       {/* 1. Header Title matching the uploaded image */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-            <i className="fa-regular fa-calendar-days text-xl"></i>
+          <div className="w-11 h-11 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+            <i className="fa-regular fa-calendar-days text-2xl"></i>
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
               <span>บัญชีงบเดือนเวลาทำการ</span>
             </h1>
-            <p className="text-sm text-slate-500 font-medium">
+            <p className="text-sm sm:text-base text-slate-500 font-medium">
               ประจำเดือน{THAI_MONTHS_FULL[selectedMonth]} พ.ศ. {selectedYearBE}
             </p>
           </div>
         </div>
 
         {/* Quick legend on top-right */}
-        <div className="hidden lg:flex items-center gap-3 text-xs bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs">
+        <div className="hidden lg:flex items-center gap-3.5 text-xs sm:text-sm bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-xs">
           <span className="text-slate-500 font-semibold">ตัวย่อ:</span>
           <span className="font-bold text-slate-800">/ = มา</span>
           <span className="text-purple-700 font-bold">ศ = ศึกษา</span>
@@ -462,75 +462,75 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
           <span className="text-orange-700 font-bold">อ = บวช</span>
           <span className="text-blue-700 font-bold">พ = พักผ่อน</span>
           <span className="text-cyan-700 font-bold">ร = ราชการ</span>
-          <span className="text-red-600 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-200">ห = วันหยุด</span>
+          <span className="text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200">ห = วันหยุด</span>
         </div>
       </div>
 
       {/* 2. Top Filter Bar matching the exact pill/card in the image */}
-      <div className="no-print bg-white rounded-xl shadow-xs border border-slate-200 p-3 flex flex-wrap items-center gap-3">
+      <div className="no-print bg-white rounded-xl shadow-xs border border-slate-200 p-3.5 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-blue-600 pl-1 font-bold">
-          <i className="fa-solid fa-filter text-base"></i>
+          <i className="fa-solid fa-filter text-lg"></i>
         </div>
 
         {/* Group Selector */}
-        <div className="relative min-w-[200px]">
+        <div className="relative min-w-[220px]">
           <select
             value={selectedGroup}
             onChange={e => {
               setSelectedGroup(e.target.value);
               setSelectedPosition('all');
             }}
-            className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 cursor-pointer shadow-xs hover:border-slate-300 transition"
+            className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-9 cursor-pointer shadow-xs hover:border-slate-300 transition"
           >
             <option value="all">ทุกกลุ่มงาน</option>
             <option value="ข้าราชการ+ลูกจ้าง">1. ข้าราชการ+ลูกจ้าง</option>
             <option value="พนักงานเงินรายได้, พนักงานมหาวิทยาลัย, พนักงานราชการ">2. พนักงานเงินรายได้, พนักงานมหาวิทยาลัย, พนักงานราชการ</option>
             <option value="อาจารย์">3. อาจารย์</option>
           </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
-            <i className="fa-solid fa-chevron-down text-[10px]"></i>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+            <i className="fa-solid fa-chevron-down text-xs"></i>
           </div>
         </div>
 
         {/* Position Selector (Cascades on selected group) */}
-        <div className="relative min-w-[190px]">
+        <div className="relative min-w-[210px]">
           <select
             value={selectedPosition}
             onChange={e => setSelectedPosition(e.target.value)}
-            className="w-full appearance-none bg-white border border-blue-200 bg-blue-50/20 rounded-lg px-3.5 py-2 text-xs font-semibold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 cursor-pointer shadow-xs hover:border-blue-300 transition"
+            className="w-full appearance-none bg-white border border-blue-200 bg-blue-50/20 rounded-lg px-4 py-2.5 text-sm font-semibold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-9 cursor-pointer shadow-xs hover:border-blue-300 transition"
           >
             <option value="all">ทุกตำแหน่งงาน {selectedGroup !== 'all' ? `(ในกลุ่มที่เลือก)` : ''}</option>
             {availablePositionsForFilter.map(pos => (
               <option key={pos} value={pos}>{pos}</option>
             ))}
           </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-blue-500">
-            <i className="fa-solid fa-chevron-down text-[10px]"></i>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-blue-500">
+            <i className="fa-solid fa-chevron-down text-xs"></i>
           </div>
         </div>
 
         {/* Month Selector */}
-        <div className="relative min-w-[170px]">
+        <div className="relative min-w-[175px]">
           <select
             value={selectedMonth}
             onChange={e => setSelectedMonth(parseInt(e.target.value))}
-            className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 cursor-pointer shadow-xs hover:border-slate-300 transition"
+            className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-9 cursor-pointer shadow-xs hover:border-slate-300 transition"
           >
             {THAI_MONTHS_FULL.map((m, idx) => (
               <option key={m} value={idx}>{m}</option>
             ))}
           </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
-            <i className="fa-solid fa-chevron-down text-[10px]"></i>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+            <i className="fa-solid fa-chevron-down text-xs"></i>
           </div>
         </div>
 
         {/* Year Selector */}
-        <div className="relative min-w-[130px]">
+        <div className="relative min-w-[140px]">
           <select
             value={selectedYearBE}
             onChange={e => setSelectedYearBE(parseInt(e.target.value))}
-            className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-8 cursor-pointer shadow-xs hover:border-slate-300 transition"
+            className="w-full appearance-none bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-9 cursor-pointer shadow-xs hover:border-slate-300 transition"
           >
             <option value={2567}>พ.ศ. 2567</option>
             <option value={2568}>พ.ศ. 2568</option>
@@ -538,16 +538,16 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
             <option value={2570}>พ.ศ. 2570</option>
             <option value={2571}>พ.ศ. 2571</option>
           </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400">
-            <i className="fa-solid fa-chevron-down text-[10px]"></i>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+            <i className="fa-solid fa-chevron-down text-xs"></i>
           </div>
         </div>
 
         {/* Info label & Actions */}
-        <div className="ml-auto flex items-center gap-2 flex-wrap">
+        <div className="ml-auto flex items-center gap-2.5 flex-wrap">
           <button
             onClick={handleSyncAnnualHolidays}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
             title="ดึงวันหยุดราชการประจำปีและวันหยุดนักขัตฤกษ์ของไทยอัตโนมัติ"
           >
             <i className="fa-solid fa-cloud-arrow-down text-slate-900"></i>
@@ -555,7 +555,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
           </button>
           <button
             onClick={handleOpenSetHolidayModal}
-            className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
             title="กำหนดวันหยุดราชการประจำเดือน เช่น วันเข้าพรรษา, วันปิยมหาราช"
           >
             <i className="fa-solid fa-calendar-plus text-amber-200"></i>
@@ -566,7 +566,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
               window.focus();
               setTimeout(() => window.print(), 50);
             }}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-xs transition cursor-pointer"
           >
             <i className="fa-solid fa-print"></i>
             <span>พิมพ์</span>
@@ -577,15 +577,15 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
       {/* 3. The Exact Table matching the user's uploaded image */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-center text-xs select-none">
+          <table className="w-full border-collapse text-center text-sm select-none">
             {/* Table Header with Distinct Government Color Blocks */}
             <thead>
               {/* Row 1: Section Super-Headers */}
-              <tr className="text-white text-xs font-bold leading-tight">
+              <tr className="text-white text-xs sm:text-sm font-bold leading-tight">
                 {/* 1. ลำดับ (Blue) */}
                 <th
                   rowSpan={2}
-                  className="bg-[#0b5ed7] border-r border-blue-400/30 px-2 py-2.5 w-12 text-center"
+                  className="bg-[#0b5ed7] border-r border-blue-400/30 px-2 py-3 w-12 text-center"
                 >
                   ลำดับ
                 </th>
@@ -593,7 +593,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                 {/* 2. ชื่อ-นามสกุล (Blue) */}
                 <th
                   rowSpan={2}
-                  className="bg-[#0b5ed7] border-r border-blue-400/30 px-4 py-2.5 text-center min-w-[200px]"
+                  className="bg-[#0b5ed7] border-r border-blue-400/30 px-4 py-3 text-center min-w-[220px]"
                 >
                   ชื่อ-นามสกุล
                 </th>
@@ -601,11 +601,11 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                 {/* 3. รวมวันทำการ (Blue) */}
                 <th
                   rowSpan={2}
-                  className="bg-[#0b5ed7] border-r border-blue-400/30 px-1 py-1.5 w-14 text-center"
+                  className="bg-[#0b5ed7] border-r border-blue-400/30 px-1.5 py-2 w-16 text-center"
                 >
-                  <div className="leading-tight text-[11px]">
+                  <div className="leading-tight text-xs sm:text-sm">
                     <div>รวม</div>
-                    <div className="text-[10px] font-normal">วันทำการ</div>
+                    <div className="text-[11px] font-semibold">วันทำการ</div>
                   </div>
                 </th>
 
@@ -619,7 +619,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                     <th
                       key={day}
                       rowSpan={2}
-                      className={`border-r border-slate-200/40 text-center font-bold px-1 py-2 w-7 sm:w-8 text-[11px] ${
+                      className={`border-r border-slate-200/40 text-center font-bold px-1 py-2.5 min-w-[30px] text-xs sm:text-sm ${
                         weekend
                           ? 'bg-[#d92d20] text-white font-extrabold'
                           : isDateHoliday
@@ -636,7 +636,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                 {/* 5. รวมเดือนนี้ (Deep Purple Block #4c1d56 / #581c87) */}
                 <th
                   colSpan={8}
-                  className="bg-[#4c1d56] border-r border-purple-400/40 px-2 py-1.5 text-center font-bold text-white tracking-wide"
+                  className="bg-[#4c1d56] border-r border-purple-400/40 px-2 py-2 text-center font-bold text-white tracking-wide"
                 >
                   รวมเดือนนี้
                 </th>
@@ -644,7 +644,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                 {/* 6. รวมตั้งแต่ต้นงบ (Vibrant Orange Block #e65100 / #d9531e) */}
                 <th
                   colSpan={8}
-                  className="bg-[#d9531e] border-r border-orange-400/40 px-2 py-1.5 text-center font-bold text-white tracking-wide"
+                  className="bg-[#d9531e] border-r border-orange-400/40 px-2 py-2 text-center font-bold text-white tracking-wide"
                 >
                   รวมตั้งแต่ต้นงบ
                 </th>
@@ -652,19 +652,19 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                 {/* 7. หมายเหตุ (Blue) */}
                 <th
                   rowSpan={2}
-                  className="bg-[#0b5ed7] px-3 py-2.5 text-center font-bold text-white min-w-[90px]"
+                  className="bg-[#0b5ed7] px-3 py-3 text-center font-bold text-white min-w-[110px]"
                 >
                   หมายเหตุ
                 </th>
               </tr>
 
               {/* Row 2: Sub-headers for symbols under "รวมเดือนนี้" and "รวมตั้งแต่ต้นงบ" */}
-              <tr className="text-white text-[11px] font-bold">
+              <tr className="text-white text-xs sm:text-sm font-bold">
                 {/* Subheaders for รวมเดือนนี้ (Purple) */}
                 {(['ศ', 'ป', 'ก', 'ค', 'อ', 'พ', 'ร', 'ส'] as AttendanceSymbol[]).map(sym => (
                   <th
                     key={`m_${sym}`}
-                    className="bg-[#3b1244] border-r border-purple-400/30 px-1 py-1 w-6 text-center text-purple-100"
+                    className="bg-[#3b1244] border-r border-purple-400/30 px-1 py-1.5 min-w-[26px] text-center text-purple-100"
                   >
                     {sym}
                   </th>
@@ -674,7 +674,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                 {(['ศ', 'ป', 'ก', 'ค', 'อ', 'พ', 'ร', 'ส'] as AttendanceSymbol[]).map(sym => (
                   <th
                     key={`c_${sym}`}
-                    className="bg-[#b43c10] border-r border-orange-400/30 px-1 py-1 w-6 text-center text-orange-100"
+                    className="bg-[#b43c10] border-r border-orange-400/30 px-1 py-1.5 min-w-[26px] text-center text-orange-100"
                   >
                     {sym}
                   </th>
@@ -686,7 +686,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
             <tbody className="divide-y divide-slate-200 text-slate-800">
               {presentPositions.length === 0 ? (
                 <tr>
-                  <td colSpan={3 + daysInMonth + 8 + 8 + 1} className="py-8 text-center text-slate-400 text-xs">
+                  <td colSpan={3 + daysInMonth + 8 + 8 + 1} className="py-10 text-center text-slate-400 text-sm">
                     ไม่พบข้อมูลบุคลากรในกลุ่มงานหรือตำแหน่งที่เลือก
                   </td>
                 </tr>
@@ -701,7 +701,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                       <tr className="bg-[#f0f6fe] border-t border-b border-blue-200/80">
                         <td
                           colSpan={3}
-                          className="text-left font-bold text-[#0b5ed7] px-3 py-1 text-[11px] bg-[#f0f6fe]"
+                          className="text-left font-bold text-[#0b5ed7] px-3 py-1.5 text-xs sm:text-sm bg-[#f0f6fe]"
                         >
                           <span>{posName}</span>
                         </td>
@@ -730,7 +730,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                                 >
                                   <div className="h-full min-h-[140px] w-full flex items-center justify-center py-4 px-0.5">
                                     <span
-                                      className="font-bold text-red-600 text-[9px] sm:text-[10px] tracking-wider select-none whitespace-nowrap drop-shadow-xs"
+                                      className="font-bold text-red-600 text-[11px] sm:text-xs tracking-wider select-none whitespace-nowrap drop-shadow-xs"
                                       style={{
                                         writingMode: 'vertical-rl'
                                       }}
@@ -774,19 +774,19 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                             className="hover:bg-blue-50/50 transition-colors border-b border-slate-200"
                           >
                             {/* 1. ลำดับ */}
-                            <td className="py-1 px-1.5 font-medium text-slate-600 border-r border-slate-200 text-center text-xs">
+                            <td className="py-1.5 px-2 font-medium text-slate-600 border-r border-slate-200 text-center text-sm">
                               {uIdx + 1}
                             </td>
 
                             {/* 2. ชื่อ-นามสกุล */}
-                            <td className="py-1 px-2.5 text-left border-r border-slate-200 whitespace-nowrap">
-                              <div className="font-semibold text-slate-900 text-xs leading-snug">
+                            <td className="py-1.5 px-3 text-left border-r border-slate-200 whitespace-nowrap">
+                              <div className="font-semibold text-slate-900 text-sm leading-snug">
                                 {user.title}{user.firstName} {user.lastName}
                               </div>
                             </td>
 
                             {/* 3. รวมวันทำการ (Bold blue number as in screenshot) */}
-                            <td className="py-1 px-1 border-r border-slate-200 text-center font-bold text-[#0b5ed7] text-xs">
+                            <td className="py-1.5 px-1.5 border-r border-slate-200 text-center font-bold text-[#0b5ed7] text-sm">
                               {presentCount}
                             </td>
 
@@ -827,12 +827,12 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                                   onClick={() => {
                                     if (!isPrintView) setModalTarget({ user, day });
                                   }}
-                                  className="p-0 text-center font-bold text-xs border-r border-slate-200 bg-white hover:bg-blue-100 text-slate-800 cursor-pointer transition relative"
+                                  className="p-0 text-center font-bold text-sm border-r border-slate-200 bg-white hover:bg-blue-100 text-slate-800 cursor-pointer transition relative"
                                   title={`${user.title}${user.firstName} - ${formatThaiDate(dateStr)}: ${symbol || 'คลิกเพื่อลงเวลาหลายวัน'}`}
                                 >
-                                  <div className="w-full h-6.5 flex items-center justify-center">
+                                  <div className="w-full h-8 flex items-center justify-center">
                                     {symbol ? (
-                                      <span className={`font-extrabold text-[11px] ${
+                                      <span className={`font-extrabold text-sm ${
                                         symbol === '/' ? 'text-emerald-700' :
                                         symbol === 'ป' ? 'text-rose-700' :
                                         symbol === 'ก' ? 'text-amber-700' :
@@ -845,7 +845,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                                         {symbol}
                                       </span>
                                     ) : (
-                                      <span className="text-slate-200 text-[9px]">-</span>
+                                      <span className="text-slate-300 text-xs">-</span>
                                     )}
                                   </div>
                                 </td>
@@ -858,7 +858,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                               return (
                                 <td
                                   key={`mc_${sym}`}
-                                  className="py-1 px-0.5 border-r border-slate-200 text-center font-mono font-medium text-[10px] bg-purple-50/20 text-purple-950"
+                                  className="py-1.5 px-1 border-r border-slate-200 text-center font-mono font-medium text-xs sm:text-sm bg-purple-50/20 text-purple-950"
                                 >
                                   {cnt > 0 ? (
                                     <span className="font-bold text-purple-800">{cnt}</span>
@@ -884,7 +884,7 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                                       records
                                     });
                                   }}
-                                  className="py-1 px-0.5 border-r border-slate-200 text-center font-mono font-medium text-[10px] bg-orange-50/20 text-orange-950 hover:bg-orange-100 hover:text-orange-900 cursor-pointer transition select-none group"
+                                  className="py-1.5 px-1 border-r border-slate-200 text-center font-mono font-medium text-xs sm:text-sm bg-orange-50/20 text-orange-950 hover:bg-orange-100 hover:text-orange-900 cursor-pointer transition select-none group"
                                   title={`คลิกเพื่อดูวันที่ลา "${symDef.name} (${sym})" ตั้งแต่ต้นงบ (${cnt} วัน)`}
                                 >
                                   {cnt > 0 ? (
@@ -901,27 +901,27 @@ export const MonthlyLedgerTable: React.FC<MonthlyLedgerTableProps> = ({
                             })}
 
                             {/* 7. หมายเหตุ: เปลี่ยนจากโอน ให้คลิกแล้วเพิ่ม/แก้ไขข้อความได้ */}
-                            <td className="py-1 px-1.5 text-center text-xs">
+                            <td className="py-1.5 px-2 text-center text-xs">
                               {(() => {
                                 const note = storageService.getMonthlyNote(user.id, selectedYearBE, selectedMonth);
                                 return note ? (
                                   <button
                                     type="button"
                                     onClick={() => handleEditNote(user)}
-                                    className="group max-w-[120px] mx-auto text-left px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded text-[10px] font-medium transition cursor-pointer flex items-center justify-between gap-1 shadow-xs"
+                                    className="group max-w-[140px] mx-auto text-left px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded text-xs font-medium transition cursor-pointer flex items-center justify-between gap-1.5 shadow-xs"
                                     title={`${note} (คลิกเพื่อแก้ไขหรือลบ)`}
                                   >
                                     <span className="truncate">{note}</span>
-                                    <i className="fa-solid fa-pen text-[8px] text-amber-600 opacity-60 group-hover:opacity-100 shrink-0"></i>
+                                    <i className="fa-solid fa-pen text-[10px] text-amber-600 opacity-60 group-hover:opacity-100 shrink-0"></i>
                                   </button>
                                 ) : (
                                   <button
                                     type="button"
                                     onClick={() => handleEditNote(user)}
-                                    className="text-slate-400 hover:text-blue-700 hover:bg-blue-50 px-1.5 py-0.5 rounded transition text-[10px] font-medium cursor-pointer inline-flex items-center gap-1 border border-dashed border-slate-200 hover:border-blue-300"
+                                    className="text-slate-400 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition text-xs font-medium cursor-pointer inline-flex items-center gap-1 border border-dashed border-slate-200 hover:border-blue-300"
                                     title="คลิกเพื่อเพิ่มข้อความหมายเหตุ"
                                   >
-                                    <i className="fa-solid fa-plus text-[8px]"></i>
+                                    <i className="fa-solid fa-plus text-[10px]"></i>
                                     <span>หมายเหตุ</span>
                                   </button>
                                 );

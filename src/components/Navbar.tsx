@@ -21,7 +21,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, setting
   return (
     <header className="no-print bg-gradient-to-r from-blue-950 via-indigo-900 to-slate-900 text-white shadow-xl border-b-4 border-amber-500">
       {/* Top Banner with Official Crest & Clock */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="w-full max-w-none mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex items-center gap-3.5">
           {/* Logo / Garuda emblem */}
           <div className="w-13 h-13 sm:w-14 sm:h-14 bg-white/10 rounded-xl p-1.5 flex items-center justify-center border border-amber-400/40 shadow-inner shrink-0 overflow-hidden">
@@ -74,10 +74,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, setting
 
       {/* Main Navigation Tabs */}
       <nav className="bg-blue-950/90 border-t border-blue-900/70 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex items-center gap-1 sm:gap-2 overflow-x-auto py-1.5 scrollbar-thin scrollbar-thumb-blue-800">
+        <div className="w-full max-w-none mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1.5 scrollbar-thin scrollbar-thumb-blue-800">
           <button
             onClick={() => onSelectTab('attendance')}
-            className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               currentTab === 'attendance'
                 ? 'bg-amber-500 text-blue-950 shadow-md font-bold'
                 : 'text-blue-100 hover:bg-blue-900 hover:text-white'
@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, setting
 
           <button
             onClick={() => onSelectTab('users')}
-            className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               currentTab === 'users'
                 ? 'bg-amber-500 text-blue-950 shadow-md font-bold'
                 : 'text-blue-100 hover:bg-blue-900 hover:text-white'
@@ -101,7 +101,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, setting
 
           <button
             onClick={() => onSelectTab('settings')}
-            className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               currentTab === 'settings'
                 ? 'bg-amber-500 text-blue-950 shadow-md font-bold'
                 : 'text-blue-100 hover:bg-blue-900 hover:text-white'
@@ -113,7 +113,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, setting
 
           <button
             onClick={() => onSelectTab('print')}
-            className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            className={`px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
               currentTab === 'print'
                 ? 'bg-amber-500 text-blue-950 shadow-md font-bold'
                 : 'text-blue-100 hover:bg-blue-900 hover:text-white'
