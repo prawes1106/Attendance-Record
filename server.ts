@@ -324,6 +324,22 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
 
+  app.use((req: Request, res: Response, next) => {
+    const queryIdx = req.url.indexOf('?');
+    const pathname = queryIdx >= 0 ? req.url.slice(0, queryIdx) : req.url;
+    const search = queryIdx >= 0 ? req.url.slice(queryIdx) : '';
+
+    if (req.method === 'GET' && pathname === '/attendance') {
+      res.redirect(301, `/attendance/${search}`);
+      return;
+    }
+
+    if (pathname.startsWith('/attendance/')) {
+      req.url = (pathname.slice('/attendance'.length) || '/') + search;
+    }
+    next();
+  });
+
   app.get('/api/health', async (_req: Request, res: Response) => {
     const configured = isDbConfigured();
     if (!configured) {

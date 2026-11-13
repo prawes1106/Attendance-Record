@@ -21,8 +21,19 @@ function enqueueApiSync(task: () => Promise<void>): void {
     });
 }
 
+export function resolveApiUrl(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (typeof window !== 'undefined') {
+    const pathname = window.location.pathname;
+    if (pathname === '/attendance' || pathname.startsWith('/attendance/')) {
+      return `/attendance${cleanPath}`;
+    }
+  }
+  return cleanPath;
+}
+
 async function apiJson(url: string, method: string, body?: unknown): Promise<any> {
-  const res = await fetch(url, {
+  const res = await fetch(resolveApiUrl(url), {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,

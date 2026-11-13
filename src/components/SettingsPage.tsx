@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { SystemSettings, UserPersonnel, DepartmentGroup, PositionType } from '../types';
-import { alertHelper, storageService } from '../services/storage';
+import { alertHelper, storageService, resolveApiUrl } from '../services/storage';
 import { getFiscalYearRange } from '../utils/thaiDate';
 import { INITIAL_SYSTEM_SETTINGS } from '../data/initialData';
 import { buildMariaDbSqlDump } from '../utils/sqlExport';
@@ -77,7 +77,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefreshD
 
     if (storageService.isServerDbEnabled()) {
       try {
-        const res = await fetch('/api/export-sql');
+        const res = await fetch(resolveApiUrl('/api/export-sql'));
         if (res.ok) {
           const sqlText = await res.text();
           const blob = new Blob([sqlText], { type: 'application/sql;charset=utf-8' });
