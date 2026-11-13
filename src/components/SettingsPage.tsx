@@ -3,6 +3,7 @@ import { SystemSettings, UserPersonnel, DepartmentGroup, PositionType } from '..
 import { alertHelper, storageService } from '../services/storage';
 import { getFiscalYearRange } from '../utils/thaiDate';
 import { INITIAL_SYSTEM_SETTINGS } from '../data/initialData';
+import { buildMariaDbSqlDump } from '../utils/sqlExport';
 
 interface SettingsPageProps {
   settings: SystemSettings;
@@ -68,6 +69,45 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefreshD
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     alertHelper.toastSuccess('ดาวน์โหลดไฟล์สำรองข้อมูลเรียบร้อยแล้ว');
+  };
+
+  const handleExportSqlBackup = async () => {
+    const dateStamp = new Date().toISOString().split('T')[0];
+    const fileName = `ku-attendance-mariadb-${dateStamp}.sql`;
+
+    if (storageService.isServerDbEnabled()) {
+      try {
+        const res = await fetch('/api/export-sql');
+        if (res.ok) {
+          const sqlText = await res.text();
+          const blob = new Blob([sqlText], { type: 'application/sql;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          alertHelper.toastSuccess('บันทึกไฟล์ฐานข้อมูล MariaDB (.SQL) ลงเครื่องเรียบร้อยแล้ว');
+          return;
+        }
+      } catch {
+        // Fallback to local snapshot SQL generator
+      }
+    }
+
+    const sqlText = buildMariaDbSqlDump(storageService.exportFullBackup());
+    const blob = new Blob([sqlText], { type: 'application/sql;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alertHelper.toastSuccess('บันทึกไฟล์ฐานข้อมูล MariaDB (.SQL) ลงเครื่องเรียบร้อยแล้ว');
   };
 
   const handleImportBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -888,10 +928,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onRefreshD
         </div>
 
         <p className="text-xs text-slate-600 leading-relaxed">
-          ท่านสามารถดาวน์โหลดข้อมูลทั้งหมด (รายชื่อบุคลากร, การลงเวลา, วันหยุด, การตั้งค่า) เก็บไว้เป็นไฟล์สำรอง <b>.JSON</b> หรือกู้คืนข้อมูลจากไฟล์สำรองเข้าสู่ระบบและฐานข้อมูล MariaDB บน NAS ได้ทันที
+          ท่านสามารถบันทึกฐานข้อมูล MariaDB เป็นไฟล์ <b>.SQL</b> (สำหรับเปิดดูหรือนำเข้าใน phpMyAdmin) หรือไฟล์สำรอง <b>.JSON</b> ลงในเครื่องคอมพิวเตอร์ได้ทันที
         </p>
 
         <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleExportSqlBackup}
+            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-xs transition"
+          >
+            <i className="fa-solid fa-file-arrow-down text-amber-300"></i>
+            <span>บันทึก MariaDB (.SQL) ลงเครื่อง</span>
+          </button>
+
           <button
             type="button"
             onClick={handleExportBackup}

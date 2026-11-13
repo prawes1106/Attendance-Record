@@ -21,8 +21,10 @@ const DB_PASSWORD = process.env.DB_PASSWORD || '';
 let pool: Pool | null = null;
 let schemaInitialized = false;
 let lastDbError: string | null = null;
+let devDbUnavailable = false;
 
 function isDbConfigured(): boolean {
+  if (!IS_PRODUCTION && devDbUnavailable) return false;
   return Boolean(DB_HOST && DB_USER);
 }
 
@@ -131,7 +133,14 @@ async function ensureSchema(): Promise<boolean> {
     return true;
   } catch (err: any) {
     lastDbError = err?.message || 'Database initialization error';
-    console.error('MariaDB schema initialization error:', lastDbError);
+    if (!IS_PRODUCTION && (err?.code === 'ENOTFOUND' || err?.code === 'ECONNREFUSED')) {
+      devDbUnavailable = true;
+      lastDbError = null;
+      return false;
+    }
+    if (IS_PRODUCTION) {
+      console.warn('MariaDB connection retry pending:', lastDbError);
+    }
     return false;
   }
 }
@@ -420,6 +429,108 @@ async function startServer() {
     } catch (err: any) {
       console.error('Bootstrap error:', err);
       res.status(500).json({ dbConnected: false, error: err?.message || 'Bootstrap failed' });
+    }
+  });
+
+  app.get('/api/export-sql', async (_req: Request, res: Response) => {
+    if (!isDbConfigured()) {
+      res.status(404).json({ ok: false, error: 'MariaDB is not configured' });
+      return;
+    }
+    try {
+      const connected = await ensureSchema();
+      const activePool = await getPool();
+      if (!connected || !activePool) {
+        res.status(503).json({ ok: false, error: 'MariaDB is unavailable' });
+        return;
+      }
+
+      const esc = (val: unknown): string => {
+        if (val === null || val === undefined) return 'NULL';
+        if (typeof val === 'number') return Number.isFinite(val) ? String(val) : '0';
+        if (typeof val === 'boolean') return val ? '1' : '0';
+        return `'${String(val)
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'")
+          .replace(/\r/g, '\\r')
+          .replace(/\n/g, '\\n')
+          .replace(/\0/g, '\\0')
+          .replace(/\x1a/g, '\\Z')}'`;
+      };
+
+      const [settingsRows] = await activePool.query<RowDataPacket[]>('SELECT * FROM system_settings WHERE id = 1 LIMIT 1');
+      const [userRows] = await activePool.query<RowDataPacket[]>('SELECT * FROM users_personnel ORDER BY sort_order ASC, id ASC');
+      const [logRows] = await activePool.query<RowDataPacket[]>('SELECT * FROM attendance_records');
+      const [noteRows] = await activePool.query<RowDataPacket[]>('SELECT * FROM monthly_notes');
+
+      const lines: string[] = [
+        '-- ============================================================',
+        `-- ฐานข้อมูลระบบลงเวลาปฏิบัติราชการ (MariaDB Dump: ${DB_NAME})`,
+        `-- Generated at: ${new Date().toISOString()}`,
+        '-- ============================================================',
+        '',
+        'SET NAMES utf8mb4;',
+        'SET FOREIGN_KEY_CHECKS = 0;',
+        '',
+        'TRUNCATE TABLE `system_settings`;',
+        'TRUNCATE TABLE `users_personnel`;',
+        'TRUNCATE TABLE `attendance_records`;',
+        'TRUNCATE TABLE `monthly_notes`;',
+        '',
+      ];
+
+      if (settingsRows.length > 0) {
+        const s = settingsRows[0];
+        lines.push(
+          'INSERT INTO `system_settings` (`id`, `agency_name`, `department_sub_name`, `responsible_officer_name`, `responsible_officer_position`, `responsible_officer_phone`, `supervisor_name`, `supervisor_position`, `signature_note`, `logo_type`, `custom_logo_url`, `work_start_time`, `work_end_time`, `late_grace_minutes`, `current_fiscal_year`) VALUES',
+          `  (1, ${esc(s.agency_name)}, ${esc(s.department_sub_name)}, ${esc(s.responsible_officer_name)}, ${esc(s.responsible_officer_position)}, ${esc(s.responsible_officer_phone)}, ${esc(s.supervisor_name)}, ${esc(s.supervisor_position)}, ${esc(s.signature_note)}, ${esc(s.logo_type)}, ${esc(s.custom_logo_url)}, ${esc(s.work_start_time)}, ${esc(s.work_end_time)}, ${Number(s.late_grace_minutes ?? 1)}, ${Number(s.current_fiscal_year ?? 2569)});`,
+          ''
+        );
+      }
+
+      if (userRows.length > 0) {
+        for (let i = 0; i < userRows.length; i += 100) {
+          const chunk = userRows.slice(i, i + 100);
+          lines.push('INSERT INTO `users_personnel` (`id`, `sort_order`, `employee_code`, `citizen_id`, `title`, `first_name`, `last_name`, `department_group`, `position`, `academic_rank`, `accumulated_leave_days`, `yearly_quota_days`, `total_leave_entitled`, `used_leave_days`, `phone`, `email`, `avatar_url`, `start_date`, `status`) VALUES');
+          chunk.forEach((u, idx) => {
+            const comma = idx === chunk.length - 1 ? ';' : ',';
+            lines.push(`  (${esc(u.id)}, ${Number(u.sort_order ?? 0)}, ${esc(u.employee_code)}, ${esc(u.citizen_id)}, ${esc(u.title)}, ${esc(u.first_name)}, ${esc(u.last_name)}, ${esc(u.department_group)}, ${esc(u.position)}, ${esc(u.academic_rank)}, ${Number(u.accumulated_leave_days ?? 0)}, ${Number(u.yearly_quota_days ?? 10)}, ${Number(u.total_leave_entitled ?? 10)}, ${Number(u.used_leave_days ?? 0)}, ${esc(u.phone)}, ${esc(u.email)}, ${esc(u.avatar_url)}, ${esc(u.start_date)}, ${esc(u.status)})${comma}`);
+          });
+          lines.push('');
+        }
+      }
+
+      if (logRows.length > 0) {
+        for (let i = 0; i < logRows.length; i += 200) {
+          const chunk = logRows.slice(i, i + 200);
+          lines.push('INSERT INTO `attendance_records` (`id`, `user_id`, `attendance_date`, `symbol`, `check_in_time`, `check_out_time`, `is_late`, `note`, `recorded_by`, `updated_at`) VALUES');
+          chunk.forEach((r, idx) => {
+            const comma = idx === chunk.length - 1 ? ';' : ',';
+            lines.push(`  (${esc(r.id)}, ${esc(r.user_id)}, ${esc(r.attendance_date)}, ${esc(r.symbol)}, ${esc(r.check_in_time)}, ${esc(r.check_out_time)}, ${r.is_late ? 1 : 0}, ${esc(r.note)}, ${esc(r.recorded_by)}, ${esc(r.updated_at)})${comma}`);
+          });
+          lines.push('');
+        }
+      }
+
+      if (noteRows.length > 0) {
+        for (let i = 0; i < noteRows.length; i += 100) {
+          const chunk = noteRows.slice(i, i + 100);
+          lines.push('INSERT INTO `monthly_notes` (`note_key`, `user_id`, `year_be`, `month_num`, `note`) VALUES');
+          chunk.forEach((n, idx) => {
+            const comma = idx === chunk.length - 1 ? ';' : ',';
+            lines.push(`  (${esc(n.note_key)}, ${esc(n.user_id)}, ${Number(n.year_be)}, ${Number(n.month_num)}, ${esc(n.note)})${comma}`);
+          });
+          lines.push('');
+        }
+      }
+
+      lines.push('SET FOREIGN_KEY_CHECKS = 1;', '');
+      const dateStamp = new Date().toISOString().split('T')[0];
+      res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="ku-attendance-mariadb-${dateStamp}.sql"`);
+      res.send(lines.join('\n'));
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || 'SQL export failed' });
     }
   });
 
