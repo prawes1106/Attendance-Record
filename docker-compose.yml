@@ -11,7 +11,7 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-ku_mech_pass_2569}
       TZ: Asia/Bangkok
     volumes:
-      - ./mariadb_data:/var/lib/mysql
+      - mariadb_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -55,3 +55,6 @@ services:
       TZ: Asia/Bangkok
     ports:
       - "8080:3000"
+
+volumes:
+  mariadb_data:

@@ -8,7 +8,7 @@
 ## การติดตั้งผ่าน Docker Compose บน NAS (แนะนำ)
 
 ใน `docker-compose.yml` ประกอบด้วย 3 Container:
-1. **`ku-mech-mariadb`** — ฐานข้อมูล MariaDB 11 (เก็บไฟล์ข้อมูลถาวรไว้ที่ `./mariadb_data/` บน NAS)
+1. **`ku-mech-mariadb`** — ฐานข้อมูล MariaDB 11 (เก็บไฟล์ข้อมูลถาวรใน Docker Volume `mariadb_data`)
 2. **`ku-mech-phpmyadmin`** — หน้าเว็บจัดการฐานข้อมูล phpMyAdmin (พอร์ต `8081`)
 3. **`ku-mech-attendance`** — เว็บแอประบบลงเวลา + Backend API (พอร์ต `8080`)
 
